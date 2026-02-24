@@ -5,7 +5,7 @@ from __future__ import annotations
 from bosonic_model.qasm import Translator
 
 from quipper_distributor.bosonic_pipeline import build_hypergraph_from_instructions
-from quipper_distributor.hgraph_builder import _split_long_hedges, count_cuts
+from quipper_distributor.hgraph_builder import _split_long_hedges, count_cuts, hypergraph_to_kahypar
 from quipper_distributor.models.hypergraph import Hedge
 from quipper_distributor.models.segment import SeamStop, Segment
 
@@ -54,3 +54,20 @@ def test_count_cuts_detects_cut() -> None:
     seg = Segment(gates=circuit.instructions, hypergraph=hyp, partition={0: 0, 1: 1, -1: 0}, seam=SeamStop())
 
     assert count_cuts(seg) >= 1
+
+
+def test_hypergraph_to_kahypar_skips_singleton_nets() -> None:
+    # This shape appears after instruction-to-hypergraph conversion and used to
+    # crash kahypar on macOS when singleton nets were emitted.
+    hyp = {
+        1: [Hedge(nan=0, wires=[(-3, 2), (-2, 1), (-1, 0)], out_pos=3)],
+        0: [Hedge(nan=0, wires=[(-1, 0)], out_pos=1)],
+        2: [Hedge(nan=0, wires=[(-2, 1)], out_pos=2)],
+        3: [Hedge(nan=0, wires=[(-3, 2)], out_pos=3)],
+    }
+
+    indices, nets, weights = hypergraph_to_kahypar(hyp, n_qubits=4)
+
+    assert indices == [0]
+    assert nets == []
+    assert weights == [1, 1, 1, 1]

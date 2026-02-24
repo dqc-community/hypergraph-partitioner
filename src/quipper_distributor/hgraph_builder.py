@@ -56,16 +56,18 @@ def hypergraph_to_kahypar(hyp: Hypergraph, n_qubits: int) -> tuple[list[int], li
                 if vtx not in seen:
                     seen.add(vtx)
                     unique.append(vtx)
-            flat_data.append(unique)
+            valid = [v for v in unique if 0 <= v < n_qubits]
+            # KaHyPar requires hyperedges with at least two vertices.
+            if len(valid) >= 2:
+                flat_data.append(valid)
 
     if not flat_data:
-        return [0, 0], [], [1] * n_qubits
+        return [0], [], [1] * n_qubits
 
     hyperedge_indices: list[int] = [0]
     hyperedge_vertices: list[int] = []
     for hedge_verts in flat_data:
-        valid = [v for v in hedge_verts if 0 <= v < n_qubits]
-        hyperedge_vertices.extend(valid)
+        hyperedge_vertices.extend(hedge_verts)
         hyperedge_indices.append(len(hyperedge_vertices))
 
     vertex_weights = [1] * n_qubits
