@@ -56,9 +56,7 @@ def test_count_cuts_detects_cut() -> None:
     assert count_cuts(seg) >= 1
 
 
-def test_hypergraph_to_kahypar_skips_singleton_nets() -> None:
-    # This shape appears after instruction-to-hypergraph conversion and used to
-    # crash kahypar on macOS when singleton nets were emitted.
+def test_hypergraph_to_kahypar_reconstructs_interaction_nets() -> None:
     hyp = {
         1: [Hedge(nan=0, wires=[(-3, 2), (-2, 1), (-1, 0)], out_pos=3)],
         0: [Hedge(nan=0, wires=[(-1, 0)], out_pos=1)],
@@ -68,6 +66,6 @@ def test_hypergraph_to_kahypar_skips_singleton_nets() -> None:
 
     indices, nets, weights = hypergraph_to_kahypar(hyp, n_qubits=4)
 
-    assert indices == [0]
-    assert nets == []
+    assert indices == [0, 2, 4, 6]
+    assert nets == [1, 3, 1, 2, 0, 1]
     assert weights == [1, 1, 1, 1]

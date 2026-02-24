@@ -46,20 +46,17 @@ def count_cuts(segment: Segment) -> int:
 
 def hypergraph_to_kahypar(hyp: Hypergraph, n_qubits: int) -> tuple[list[int], list[int], list[int]]:
     """Convert hypergraph to CSR format for the kahypar Python API."""
-    flat_data: list[list[int]] = []
+    interaction_to_qubits: dict[int, set[int]] = {}
     for wire, hedges in hyp.items():
         for hedge in hedges:
-            vertices = [wire] + [w for w, _ in hedge.wires]
-            seen: set[int] = set()
-            unique: list[int] = []
-            for vtx in vertices:
-                if vtx not in seen:
-                    seen.add(vtx)
-                    unique.append(vtx)
-            valid = [v for v in unique if 0 <= v < n_qubits]
-            # KaHyPar requires hyperedges with at least two vertices.
-            if len(valid) >= 2:
-                flat_data.append(valid)
+            for interaction_id, _ in hedge.wires:
+                interaction_to_qubits.setdefault(interaction_id, set()).add(wire)
+
+    flat_data: list[list[int]] = []
+    for interaction_id in sorted(interaction_to_qubits):
+        vertices = sorted(v for v in interaction_to_qubits[interaction_id] if 0 <= v < n_qubits)
+        if len(vertices) >= 2:
+            flat_data.append(vertices)
 
     if not flat_data:
         return [0], [], [1] * n_qubits
