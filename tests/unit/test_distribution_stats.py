@@ -1,0 +1,61 @@
+"""Unit tests for bosonic-native distribution stats."""
+
+from __future__ import annotations
+
+from bosonic_model.qasm import Translator
+
+from quipper_distributor.bosonic_pipeline import (
+    count_interactions,
+    count_nonlocal_interactions,
+    count_teleports,
+    partition_circuit,
+)
+from quipper_distributor.config import KAHYPAR_CONFIG
+
+
+def test_stats_non_negative_for_cx_circuit(monkeypatch) -> None:
+    monkeypatch.setenv("QUIPPER_DISTRIBUTOR_PARTITIONER", "fallback")
+    circuit = Translator().from_qasm(
+        """
+        OPENQASM 2.0;
+        include \"qelib1.inc\";
+        qreg q[3];
+        cx q[0], q[1];
+        cx q[1], q[2];
+        """
+    )
+
+    segs = partition_circuit(
+        circuit,
+        k=2,
+        init_seg_size=1000,
+        max_hedge_dist=100,
+        config_path=KAHYPAR_CONFIG,
+    )
+
+    assert count_interactions(circuit.instructions) >= 2
+    assert count_nonlocal_interactions(segs) >= 0
+    assert count_teleports(segs, circuit.qubits()) >= 0
+
+
+def test_stats_handle_toffoli(monkeypatch) -> None:
+    monkeypatch.setenv("QUIPPER_DISTRIBUTOR_PARTITIONER", "fallback")
+    circuit = Translator().from_qasm(
+        """
+        OPENQASM 2.0;
+        include \"qelib1.inc\";
+        qreg q[3];
+        ccx q[0], q[1], q[2];
+        """
+    )
+
+    segs = partition_circuit(
+        circuit,
+        k=2,
+        init_seg_size=1000,
+        max_hedge_dist=100,
+        config_path=KAHYPAR_CONFIG,
+    )
+
+    assert count_interactions(circuit.instructions) == 1
+    assert count_nonlocal_interactions(segs) >= 0

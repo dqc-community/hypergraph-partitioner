@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TypeAlias
+
 from pydantic import BaseModel, Field
 
-from quipper_distributor.models.gate import Wire
+Wire: TypeAlias = int
 
 
 class Hedge(BaseModel):
     """A hyperedge.
 
-    nan: unused marker (0), matching Haskell original.
+    nan: start marker for span splitting.
     wires: list of (wire_index, position_in_circuit) pairs.
     out_pos: position after which the hedge ends.
     """
@@ -20,11 +22,11 @@ class Hedge(BaseModel):
     out_pos: int = 0
 
 
-# wire → list of hedges it "controls"
-Hypergraph = dict[Wire, list[Hedge]]
+# wire -> list of hedges it participates in
+Hypergraph: TypeAlias = dict[Wire, list[Hedge]]
 
-# wire → QPU block index
-Partition = dict[Wire, int]
+# wire -> QPU block index
+Partition: TypeAlias = dict[Wire, int]
 
-# block → block rename map
-Matching = dict[int, int]
+# block -> block rename map
+Matching: TypeAlias = dict[int, int]

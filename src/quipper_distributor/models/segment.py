@@ -1,4 +1,4 @@
-"""Segment model: Seam variants and Segment container."""
+"""Segment model: seam variants and segment container."""
 
 from __future__ import annotations
 
@@ -7,8 +7,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 
-from quipper_distributor.models.gate import Wire
-from quipper_distributor.models.hypergraph import Hedge
+from quipper_distributor.models.hypergraph import Hedge, Wire
 
 
 class SeamCompute(BaseModel):
@@ -33,11 +32,11 @@ Seam = Annotated[
 
 
 class Segment(BaseModel):
-    # Transitional: supports legacy Gate objects and bosonic_model instructions.
+    # Instruction payloads for this segment (bosonic_model instructions).
     gates: list[object] = Field(default_factory=list)
     hypergraph: dict[Wire, list[Hedge]] = Field(default_factory=dict)
     partition: dict[Wire, int] = Field(default_factory=dict)
     seam: Seam = Field(default_factory=SeamCompute)
-    wire_range: tuple[int, int] = (0, 0)  # (n_qubits, n_wires)
+    wire_range: tuple[int, int] = (0, 0)
 
     model_config = {"arbitrary_types_allowed": True}
