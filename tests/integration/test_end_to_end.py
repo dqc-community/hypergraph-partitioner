@@ -5,13 +5,13 @@ from __future__ import annotations
 import pytest
 from bosonic_model.qasm import Translator
 
-from quipper_distributor.bosonic_pipeline import (
+from hypergraph_partitioner.bosonic_pipeline import (
     count_interactions,
     count_nonlocal_interactions,
     count_teleports,
     partition_circuit,
 )
-from quipper_distributor.config import KAHYPAR_CONFIG
+from hypergraph_partitioner.config import KAHYPAR_CONFIG
 
 
 def _run_pipeline(qasm_text: str, k: int, init_seg_size: int = 1000) -> tuple[int, int, int]:

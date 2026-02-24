@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from bosonic_model.qasm import Translator
 
-from quipper_distributor.bosonic_pipeline import build_hypergraph_from_instructions
-from quipper_distributor.hgraph_builder import _split_long_hedges, count_cuts, hypergraph_to_kahypar
-from quipper_distributor.models.hypergraph import Hedge
-from quipper_distributor.models.segment import SeamStop, Segment
+from hypergraph_partitioner.bosonic_pipeline import build_hypergraph_from_instructions
+from hypergraph_partitioner.hgraph_builder import _split_long_hedges, count_cuts, hypergraph_to_kahypar
+from hypergraph_partitioner.models.hypergraph import Hedge
+from hypergraph_partitioner.models.segment import SeamStop, Segment
 
 
 def test_split_long_hedges_max_dist_one() -> None:

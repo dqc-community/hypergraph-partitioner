@@ -1886,7 +1886,7 @@ wheels = [
 ]
 
 [[package]]
-name = "quipper-distributor"
+name = "hypergraph-partitioner"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

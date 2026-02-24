@@ -1,6 +1,6 @@
 """Public API for bosonic-model partitioning stats."""
 
-from quipper_distributor.bosonic_pipeline import (
+from hypergraph_partitioner.bosonic_pipeline import (
     count_interactions,
     count_nonlocal_interactions,
     count_teleports,

@@ -7,7 +7,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 
-from quipper_distributor.models.hypergraph import Hedge, Wire
+from hypergraph_partitioner.models.hypergraph import Hedge, Wire
 
 
 class SeamCompute(BaseModel):

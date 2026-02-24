@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fractions import Fraction
 
-from quipper_distributor.models.hypergraph import Hedge
-from quipper_distributor.models.segment import SeamCompute, SeamStop, SeamValue, Segment
+from hypergraph_partitioner.models.hypergraph import Hedge
+from hypergraph_partitioner.models.segment import SeamCompute, SeamStop, SeamValue, Segment
 
 
 def test_hedge_model_roundtrip() -> None:

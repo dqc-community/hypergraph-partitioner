@@ -7,10 +7,10 @@ import platform
 from collections.abc import Callable
 from fractions import Fraction
 
-from quipper_distributor import config
-from quipper_distributor.hgraph_builder import count_cuts, hypergraph_to_kahypar
-from quipper_distributor.models.hypergraph import Hypergraph, Matching, Partition, Wire
-from quipper_distributor.models.segment import Seam, SeamCompute, SeamStop, SeamValue, Segment
+from hypergraph_partitioner import config
+from hypergraph_partitioner.hgraph_builder import count_cuts, hypergraph_to_kahypar
+from hypergraph_partitioner.models.hypergraph import Hypergraph, Matching, Partition, Wire
+from hypergraph_partitioner.models.segment import Seam, SeamCompute, SeamStop, SeamValue, Segment
 
 ToHyp = Callable[[list[object]], Hypergraph]
 ToPart = Callable[[Hypergraph], Partition]
@@ -24,9 +24,7 @@ def partition_hypergraph(hyp: Hypergraph, n_qubits: int, k: int, config_path: st
     - "auto": use fallback on macOS, KaHyPar elsewhere
     - "fallback": always use deterministic round-robin assignment
     """
-    mode = os.environ.get(
-        "DISTRIBUTOR_PARTITIONER", os.environ.get("QUIPPER_DISTRIBUTOR_PARTITIONER", "kahypar")
-    ).strip().lower()
+    mode = os.environ.get("DISTRIBUTOR_PARTITIONER", "kahypar").strip().lower()
     if mode not in {"auto", "fallback", "kahypar"}:
         mode = "kahypar"
 

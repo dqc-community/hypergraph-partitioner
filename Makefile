@@ -8,4 +8,4 @@ run:
 	done
 
 test:
-	uv run --extra dev pytest -q
+	uv run --extra dev python -m pytest -q

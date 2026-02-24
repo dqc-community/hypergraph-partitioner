@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from fractions import Fraction
 
-from quipper_distributor.models.hypergraph import Hedge
-from quipper_distributor.models.segment import SeamCompute, SeamStop, SeamValue, Segment
-from quipper_distributor.partitioner import (
+from hypergraph_partitioner.models.hypergraph import Hedge
+from hypergraph_partitioner.models.segment import SeamCompute, SeamStop, SeamValue, Segment
+from hypergraph_partitioner.partitioner import (
     _ignore_last_seam,
     compute_new_seams,
     count_teles,

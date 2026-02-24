@@ -1,5 +1,5 @@
 [project]
-name = "quipper-distributor"
+name = "hypergraph-partitioner"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
@@ -12,14 +12,14 @@ dependencies = [
 dev = ["pytest>=8.3.3", "ruff>=0.12.5"]
 
 [project.scripts]
-quipper-distribute = "quipper_distributor.cli:main"
+hypergraph-partition = "hypergraph_partitioner.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/quipper_distributor"]
+packages = ["src/hypergraph_partitioner"]
 
 [tool.uv.sources]
 bosonic-sdk = { path = "../dqcomp", editable = true }

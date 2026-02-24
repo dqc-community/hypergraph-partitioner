@@ -11,10 +11,10 @@ from collections.abc import Iterable
 from bosonic_model import BarrierInstruction, Circuit, ConditionalInstruction
 from bosonic_model.instructions import InstructionType
 
-from quipper_distributor.hgraph_builder import _split_long_hedges
-from quipper_distributor.models.hypergraph import Hedge, Hypergraph
-from quipper_distributor.models.segment import SeamCompute, Segment
-from quipper_distributor.partitioner import _ignore_last_seam, merge_seams, partition_hypergraph
+from hypergraph_partitioner.hgraph_builder import _split_long_hedges
+from hypergraph_partitioner.models.hypergraph import Hedge, Hypergraph
+from hypergraph_partitioner.models.segment import SeamCompute, Segment
+from hypergraph_partitioner.partitioner import _ignore_last_seam, merge_seams, partition_hypergraph
 
 
 def _unwrap_conditional(inst: InstructionType) -> InstructionType:

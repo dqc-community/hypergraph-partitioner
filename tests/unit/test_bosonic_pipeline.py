@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from bosonic_model.qasm import Translator
 
-from quipper_distributor.bosonic_pipeline import (
+from hypergraph_partitioner.bosonic_pipeline import (
     count_interactions,
     count_nonlocal_interactions,
     count_teleports,
     partition_circuit,
 )
-from quipper_distributor.config import KAHYPAR_CONFIG
+from hypergraph_partitioner.config import KAHYPAR_CONFIG
 
 
 def test_partition_circuit_runs_on_small_qasm() -> None:

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from quipper_distributor.models.hypergraph import Hedge, Hypergraph
-from quipper_distributor.models.segment import Segment
+from hypergraph_partitioner.models.hypergraph import Hedge, Hypergraph
+from hypergraph_partitioner.models.segment import Segment
 
 
 def _split_long_hedges(hedges: list[Hedge], max_dist: int) -> list[Hedge]:

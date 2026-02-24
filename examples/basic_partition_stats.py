@@ -1,4 +1,4 @@
-"""Minimal library usage example for quipper-distributor."""
+"""Minimal library usage example for hypergraph-partitioner."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 from bosonic_model.qasm import Translator
 
-from quipper_distributor import (
+from hypergraph_partitioner import (
     count_interactions,
     count_nonlocal_interactions,
     count_teleports,
