@@ -3,7 +3,7 @@ name = "hypergraph-partitioner"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "bosonic-sdk",
+    "bosonic-model",
     "pydantic>=2.7.0",
     "kahypar>=1.3.5",
 ]
@@ -22,7 +22,7 @@ build-backend = "hatchling.build"
 packages = ["src/hypergraph_partitioner"]
 
 [tool.uv.sources]
-bosonic-sdk = { path = "../dqcomp", editable = true }
+bosonic-model = { path = "../dqcomp/packages/bosonic-model", editable = true }
 
 [tool.ruff]
 line-length = 100
