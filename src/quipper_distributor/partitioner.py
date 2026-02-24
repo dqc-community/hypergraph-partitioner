@@ -20,13 +20,15 @@ def partition_hypergraph(hyp: Hypergraph, n_qubits: int, k: int, config_path: st
     """Partition hypergraph.
 
     Mode is controlled by DISTRIBUTOR_PARTITIONER:
-    - "auto" (default): use fallback on macOS, KaHyPar elsewhere
+    - "kahypar" (default): always use KaHyPar
+    - "auto": use fallback on macOS, KaHyPar elsewhere
     - "fallback": always use deterministic round-robin assignment
-    - "kahypar": always use KaHyPar
     """
-    mode = os.environ.get("DISTRIBUTOR_PARTITIONER", os.environ.get("QUIPPER_DISTRIBUTOR_PARTITIONER", "auto")).strip().lower()
+    mode = os.environ.get(
+        "DISTRIBUTOR_PARTITIONER", os.environ.get("QUIPPER_DISTRIBUTOR_PARTITIONER", "kahypar")
+    ).strip().lower()
     if mode not in {"auto", "fallback", "kahypar"}:
-        mode = "auto"
+        mode = "kahypar"
 
     if mode == "fallback" or (mode == "auto" and platform.system() == "Darwin"):
         return {v: (v % k) for v in range(n_qubits)}

@@ -13,9 +13,7 @@ from quipper_distributor.bosonic_pipeline import (
 from quipper_distributor.config import KAHYPAR_CONFIG
 
 
-def test_partition_circuit_runs_on_small_qasm(monkeypatch) -> None:
-    monkeypatch.setenv("DISTRIBUTOR_PARTITIONER", "fallback")
-
+def test_partition_circuit_runs_on_small_qasm() -> None:
     circuit = Translator().from_qasm(
         """
         OPENQASM 2.0;

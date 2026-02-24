@@ -13,8 +13,7 @@ from quipper_distributor.bosonic_pipeline import (
 from quipper_distributor.config import KAHYPAR_CONFIG
 
 
-def test_stats_non_negative_for_cx_circuit(monkeypatch) -> None:
-    monkeypatch.setenv("DISTRIBUTOR_PARTITIONER", "fallback")
+def test_stats_non_negative_for_cx_circuit() -> None:
     circuit = Translator().from_qasm(
         """
         OPENQASM 2.0;
@@ -38,8 +37,7 @@ def test_stats_non_negative_for_cx_circuit(monkeypatch) -> None:
     assert count_teleports(segs, circuit.qubits()) >= 0
 
 
-def test_stats_handle_toffoli(monkeypatch) -> None:
-    monkeypatch.setenv("DISTRIBUTOR_PARTITIONER", "fallback")
+def test_stats_handle_toffoli() -> None:
     circuit = Translator().from_qasm(
         """
         OPENQASM 2.0;
