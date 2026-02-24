@@ -1,0 +1,41 @@
+[project]
+name = "quipper-distributor"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7.0",
+    "kahypar>=1.3.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3.3", "ruff>=0.12.5"]
+
+[project.scripts]
+quipper-distribute = "quipper_distributor.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quipper_distributor"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501", "F403", "F405"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["F403", "F405"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (require kahypar)",
+]
