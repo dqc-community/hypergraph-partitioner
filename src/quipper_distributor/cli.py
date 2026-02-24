@@ -9,27 +9,12 @@ import sys
 from bosonic_model.qasm import QasmError, Translator
 
 from quipper_distributor import config
-from quipper_distributor.bosonic_adapter import circuit_to_legacy_gates
-from quipper_distributor.dist_circuit_builder import build_circuit
-from quipper_distributor.models.gate import get_wires, is_cz
-from quipper_distributor.partitioner import partitioner
-from quipper_distributor.preparation import prepare_circuit
-
-
-def _count_non_local(segments) -> int:
-    """Count non-local CZ interactions across all segments."""
-    total = 0
-    for seg in segments:
-        for g in seg.gates:
-            if is_cz(g):
-                wires = get_wires(g)
-                blocks = set()
-                for w in wires:
-                    b = seg.partition.get(w)
-                    if b is not None:
-                        blocks.add(b)
-                total += max(0, len(blocks) - 1)
-    return total
+from quipper_distributor.bosonic_pipeline import (
+    count_interactions,
+    count_nonlocal_interactions,
+    count_teleports,
+    partition_circuit,
+)
 
 
 def main() -> None:
@@ -107,32 +92,26 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # Phase 1 migration: convert to legacy gate model and reuse proven pipeline.
-    input_gates = circuit_to_legacy_gates(circuit)
-    gates = prepare_circuit(input_gates, keep_ccz=keep_ccz)
-    gate_count_input = len(gates)
-    cz_count_input = sum(1 for g in gates if is_cz(g))
-
     kahypar_config = config.KAHYPAR_CONFIG
     if not os.path.exists(kahypar_config):
         kahypar_config = os.path.join(cfg_dir, "kahypar/config/km1_kKaHyPar_sea20.ini")
 
-    segs = partitioner(
+    segments = partition_circuit(
+        circuit,
         k=k,
         init_seg_size=init_seg_size,
         max_hedge_dist=max_hedge_dist,
         config_path=kahypar_config,
-        n_qubits=n_wires,
-        n_wires=n_wires,
-        gates=gates,
     )
 
-    _, _, n_ebits, n_teleports = build_circuit(segs, n_wires, n_wires)
-
-    nonlocal_czs = _count_non_local(segs)
+    # Compatibility labels kept for this release window.
+    cz_count_input = count_interactions(circuit.instructions)
+    nonlocal_czs = count_nonlocal_interactions(segments)
+    n_ebits = nonlocal_czs
+    n_teleports = count_teleports(segments, n_wires)
 
     print()
-    print(f"Original gate count: {gate_count_input}")
+    print(f"Original gate count: {len(circuit.instructions)}")
     print(f"Original CZ count: {cz_count_input}")
     print(f"Original qubit count: {n_wires}")
     print()
