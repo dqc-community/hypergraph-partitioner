@@ -139,9 +139,7 @@ def count_cuts(segment: Segment) -> int:
 # ---------------------------------------------------------------------------
 
 
-def hypergraph_to_kahypar(
-    hyp: Hypergraph, n_qubits: int
-) -> tuple[list[int], list[int], list[int]]:
+def hypergraph_to_kahypar(hyp: Hypergraph, n_qubits: int) -> tuple[list[int], list[int], list[int]]:
     """Convert hypergraph to CSR format for the kahypar Python API.
 
     Returns (hyperedge_indices, hyperedge_vertices, vertex_weights).

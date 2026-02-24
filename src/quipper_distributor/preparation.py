@@ -6,6 +6,7 @@ Direct port of Preparation.hs.
 from __future__ import annotations
 
 from quipper_distributor.models.gate import (
+    Comment,
     Gate,
     QGate,
     QInit,
@@ -52,9 +53,15 @@ def remove_swaps(gates: list[Gate]) -> list[Gate]:
     for g in gates:
         if isinstance(g, QGate) and g.name == "swap" and len(g.inputs) == 2 and not g.controls:
             q0, q1 = g.inputs[0], g.inputs[1]
-            result.append(QGate(name="not", inputs=[q0], controls=[SignedWire(wire=q1, positive=True)]))
-            result.append(QGate(name="not", inputs=[q1], controls=[SignedWire(wire=q0, positive=True)]))
-            result.append(QGate(name="not", inputs=[q0], controls=[SignedWire(wire=q1, positive=True)]))
+            result.append(
+                QGate(name="not", inputs=[q0], controls=[SignedWire(wire=q1, positive=True)])
+            )
+            result.append(
+                QGate(name="not", inputs=[q1], controls=[SignedWire(wire=q0, positive=True)])
+            )
+            result.append(
+                QGate(name="not", inputs=[q0], controls=[SignedWire(wire=q1, positive=True)])
+            )
         else:
             result.append(g)
     return result
@@ -69,7 +76,9 @@ _T_inv = lambda w: QGate(name="T", inverted=True, inputs=[w])
 _S = lambda w: QGate(name="S", inputs=[w])
 _H = lambda w: QGate(name="H", inputs=[w])
 _X = lambda w: QGate(name="X", inputs=[w])
-_CNOT = lambda tgt, ctrl: QGate(name="not", inputs=[tgt], controls=[SignedWire(wire=ctrl, positive=True)])
+_CNOT = lambda tgt, ctrl: QGate(
+    name="not", inputs=[tgt], controls=[SignedWire(wire=ctrl, positive=True)]
+)
 
 
 def _toffoli_gates(target: Wire, c1: Wire, c2: Wire) -> list[Gate]:
@@ -97,12 +106,7 @@ def decompose_toffoli(gates: list[Gate]) -> list[Gate]:
     """Decompose CCX (Toffoli) gates into T/CNOT primitives."""
     result: list[Gate] = []
     for g in gates:
-        if (
-            isinstance(g, QGate)
-            and g.name == "not"
-            and len(g.inputs) == 1
-            and len(g.controls) == 2
-        ):
+        if isinstance(g, QGate) and g.name == "not" and len(g.inputs) == 1 and len(g.controls) == 2:
             target = g.inputs[0]
             neg_ctrls = [sw for sw in g.controls if not sw.positive]
             pos_ctrls = [sw for sw in g.controls if sw.positive]
@@ -131,21 +135,13 @@ def to_controlled_z(gates: list[Gate]) -> list[Gate]:
     """Convert QGate["not"][tgt] with 1 control into H-CZ-H."""
     result: list[Gate] = []
     for g in gates:
-        if (
-            isinstance(g, QGate)
-            and g.name == "not"
-            and len(g.inputs) == 1
-            and len(g.controls) == 1
-        ):
+        if isinstance(g, QGate) and g.name == "not" and len(g.inputs) == 1 and len(g.controls) == 1:
             target = g.inputs[0]
             ctrl = g.controls[0]
             result.append(QGate(name="H", inputs=[target]))
             result.append(QGate(name="CZ", inputs=[target], controls=[ctrl]))
             result.append(QGate(name="H", inputs=[target]))
-        elif (
-            isinstance(g, QRot)
-            and g.controls
-        ):
+        elif isinstance(g, QRot) and g.controls:
             # QRot with controls: treat as 2-qubit interaction for hypergraph purposes.
             # Wrap the target with H gates to produce a CZ-like hyperedge.
             target = g.inputs[0] if g.inputs else None

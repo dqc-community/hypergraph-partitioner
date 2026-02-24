@@ -51,9 +51,7 @@ class EbitDisentangler(BaseModel):
     pos: int
 
 
-EbitComponent = Annotated[
-    Union[EbitEntangler, EbitDisentangler], Field(discriminator="kind")
-]
+EbitComponent = Annotated[Union[EbitEntangler, EbitDisentangler], Field(discriminator="kind")]
 
 
 def _position(c: EbitComponent) -> int:
@@ -90,7 +88,7 @@ def non_local_connections(partition: Partition, hyp: Hypergraph) -> list[NonLoca
 
     Sorted by CZ position (ascending).
     """
-    nonlocal: list[NonLocalConnection] = []
+    non_local_cs: list[NonLocalConnection] = []
 
     for v, hedges in hyp.items():
         for h in hedges:
@@ -100,9 +98,9 @@ def non_local_connections(partition: Partition, hyp: Hypergraph) -> list[NonLoca
                 src_block = partition.get(v)
                 snk_block = partition.get(w)
                 if src_block is not None and snk_block is not None and src_block != snk_block:
-                    nonlocal.append((init_pos, v, w, cz_pos, out_pos))
+                    non_local_cs.append((init_pos, v, w, cz_pos, out_pos))
 
-    return sorted(nonlocal, key=lambda c: c[3])
+    return sorted(non_local_cs, key=lambda c: c[3])
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +185,7 @@ def distribute_czs(
         _, _, _, pos, _ = c
         # All connections at the same position
         this_cs = [c] + [x for x in cs_remaining[1:] if x[3] == pos]
-        cs_remaining = cs_remaining[len(this_cs):]
+        cs_remaining = cs_remaining[len(this_cs) :]
 
         result.extend(gate_list[prev:pos])
         g = gate_list[pos]
@@ -221,18 +219,17 @@ def _bell_gates(sink_e: Wire, source_e: Wire, b_sink: int, b_source: int) -> lis
     ]
 
 
-def _entangler_gates(source: Wire, source_e: Wire, sink_e: Wire, b_sink: int, b_source: int) -> list[Gate]:
+def _entangler_gates(
+    source: Wire, source_e: Wire, sink_e: Wire, b_sink: int, b_source: int
+) -> list[Gate]:
     """Ebit entangler gate sequence (matching Haskell's bell sequence)."""
-    return (
-        _bell_gates(sink_e, source_e, b_sink, b_source)
-        + [
-            QGate(name="not", inputs=[source_e], controls=[SignedWire(wire=source, positive=True)]),
-            QMeas(wire=source_e),
-            QGate(name="X", inputs=[sink_e], controls=[SignedWire(wire=source_e, positive=True)]),
-            Comment(text="QPU_allocation", wire_labels=[(source_e, "-1 ebit")]),
-            CDiscard(wire=source_e),
-        ]
-    )
+    return _bell_gates(sink_e, source_e, b_sink, b_source) + [
+        QGate(name="not", inputs=[source_e], controls=[SignedWire(wire=source, positive=True)]),
+        QMeas(wire=source_e),
+        QGate(name="X", inputs=[sink_e], controls=[SignedWire(wire=source_e, positive=True)]),
+        Comment(text="QPU_allocation", wire_labels=[(source_e, "-1 ebit")]),
+        CDiscard(wire=source_e),
+    ]
 
 
 def _disentangler_gates(source: Wire, sink_e: Wire) -> list[Gate]:
@@ -298,8 +295,8 @@ def distribute_gates(
 
     Returns (new_gates, new_wire_count, n_ebits).
     """
-    nonlocal = non_local_connections(partition, hyp)
-    components = ebit_info(partition, nonlocal)
+    non_local_cs = non_local_connections(partition, hyp)
+    components = ebit_info(partition, non_local_cs)
     n_ebits = len(components) // 2
 
     # Build eDic: (ctrl_wire, target_block) → source_ebit_wire (negative integer)
@@ -313,7 +310,7 @@ def distribute_gates(
                 e_dic[key] = -(wire_count - 1)  # sourceE = -w-1 (negative)
 
     # Replace non-local CZ wires
-    gates_with_czs = distribute_czs(nonlocal, gates, partition, e_dic)
+    gates_with_czs = distribute_czs(non_local_cs, gates, partition, e_dic)
 
     # Insert ebit gates
     final_gates = allocate_ebits(components, gates_with_czs, e_dic)
@@ -350,9 +347,7 @@ def build_circuit(
 
     Returns (gates, new_wire_count, n_ebits, n_teleports).
     """
-    initial_bindings: BindingFlags = {
-        w: True for w in range(n_inputs)
-    }
+    initial_bindings: BindingFlags = {w: True for w in range(n_inputs)}
     initial_bindings.update({w: False for w in range(n_inputs, n_wires)})
 
     return _build_circuit_rec(n_wires, initial_bindings, segments)

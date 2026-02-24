@@ -5,6 +5,8 @@ Port of Partitioner.hs.
 
 from __future__ import annotations
 
+import os
+import platform
 from fractions import Fraction
 from typing import Callable
 
@@ -30,10 +32,21 @@ ToPart = Callable[[Hypergraph], Partition]
 # ---------------------------------------------------------------------------
 
 
-def partition_hypergraph(
-    hyp: Hypergraph, n_qubits: int, k: int, config_path: str
-) -> Partition:
-    """Partition hypergraph using the kahypar Python package."""
+def partition_hypergraph(hyp: Hypergraph, n_qubits: int, k: int, config_path: str) -> Partition:
+    """Partition hypergraph.
+
+    Mode is controlled by QUIPPER_DISTRIBUTOR_PARTITIONER:
+    - "auto" (default): use fallback on macOS, KaHyPar elsewhere
+    - "fallback": always use deterministic round-robin assignment
+    - "kahypar": always use KaHyPar
+    """
+    mode = os.environ.get("QUIPPER_DISTRIBUTOR_PARTITIONER", "auto").strip().lower()
+    if mode not in {"auto", "fallback", "kahypar"}:
+        mode = "auto"
+
+    if mode == "fallback" or (mode == "auto" and platform.system() == "Darwin"):
+        return {v: (v % k) for v in range(n_qubits)}
+
     import kahypar  # type: ignore[import]
 
     from quipper_distributor import config
@@ -78,7 +91,7 @@ def _seam_pos(n: int, gates: list[Gate]) -> int:
         return first_cz
     if first_cz >= len(gates):
         return len(gates)
-    return first_cz + 1 + _seam_pos(n - 1, gates[first_cz + 1:])
+    return first_cz + 1 + _seam_pos(n - 1, gates[first_cz + 1 :])
 
 
 def initial_segments(
@@ -165,11 +178,7 @@ def get_rho(n_wires: int, seg1: Segment, seg2: Segment) -> Fraction:
     hyp2, part2 = seg2.hypergraph, seg2.partition
 
     # Only consider wires that exist in both partitions and have changed block
-    changing = [
-        w
-        for w in range(n_wires)
-        if w in part1 and w in part2 and part1[w] != part2[w]
-    ]
+    changing = [w for w in range(n_wires) if w in part1 and w in part2 and part1[w] != part2[w]]
 
     def hedges(wire: Wire, hyp: Hypergraph) -> int:
         return len(hyp.get(wire, []))
@@ -206,14 +215,12 @@ def find_valley(segments: list[Segment]) -> tuple[list[Segment], list[Segment], 
     """
     min_pos, end_pos = _find_valley_rec(segments, 0, None)
     before_min = segments[:min_pos]
-    after_min = segments[min_pos: end_pos + 1]
-    rest = segments[end_pos + 1:]
+    after_min = segments[min_pos : end_pos + 1]
+    rest = segments[end_pos + 1 :]
     return before_min, after_min, rest
 
 
-def _find_valley_rec(
-    segments: list[Segment], pos: int, current_min: int | None
-) -> tuple[int, int]:
+def _find_valley_rec(segments: list[Segment], pos: int, current_min: int | None) -> tuple[int, int]:
     """Recursive valley finder."""
     if len(segments) < 2:
         return (pos, pos)
@@ -293,6 +300,7 @@ def _heuristic_cost(blocks1: dict[int, list[Wire]], part2: Partition) -> dict[in
             continue
         # Count frequency of each block assignment in part2 for wires in this block
         from collections import Counter
+
         counts = Counter(part2[w] for w in valid_ws)
         max_same = max(counts.values()) if counts else 0
         result[b] = len(ws) - max_same
@@ -336,9 +344,7 @@ def _match_partitions_rec(
             new_matching[this_block] = b
             # Update cost: substitute heuristic estimate with real cost
             real_cost = sum(
-                1
-                for w in this_wires
-                if w in part2 and part2[w] is not None and part2[w] != b
+                1 for w in this_wires if w in part2 and part2[w] is not None and part2[w] != b
             )
             new_cost = best_cost - heuristic[this_block] + real_cost
             new_matchings.append((new_matching, new_cost))
@@ -417,11 +423,7 @@ def match_segments(
 
 def count_teles(part1: Partition, part2: Partition, n_wires: int) -> int:
     """Count wires that change block between two adjacent partitions."""
-    return sum(
-        1
-        for w in range(n_wires)
-        if w in part1 and w in part2 and part1[w] != part2[w]
-    )
+    return sum(1 for w in range(n_wires) if w in part1 and w in part2 and part1[w] != part2[w])
 
 
 # ---------------------------------------------------------------------------

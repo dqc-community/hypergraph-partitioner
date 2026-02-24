@@ -125,6 +125,7 @@ class TestEntanglerGateSequence:
     def test_entangler_gate_count(self):
         """Entangler sequence should produce the expected number of gates."""
         from quipper_distributor.dist_circuit_builder import _entangler_gates
+
         gates = _entangler_gates(source=0, source_e=-1, sink_e=-2, b_sink=1, b_source=0)
         # bell(4) + not(1) + meas(1) + X(1) + comment(1) + cdiscard(1) = 9
         assert len(gates) == 9

@@ -62,7 +62,12 @@ class TestQGate:
 
 class TestQRot:
     def test_basic(self):
-        g = QRot(name="R(2pi/%)", params=[4.0], inputs=[19], controls=[SignedWire(wire=18, positive=True)])
+        g = QRot(
+            name="R(2pi/%)",
+            params=[4.0],
+            inputs=[19],
+            controls=[SignedWire(wire=18, positive=True)],
+        )
         assert g.kind == "QRot"
         assert g.params == [4.0]
         assert g.inputs == [19]
@@ -205,6 +210,7 @@ class TestSegmentModel:
 
     def test_seam_value(self):
         from fractions import Fraction
+
         s = SeamValue(value=Fraction(1, 3))
         assert s.value == Fraction(1, 3)
 

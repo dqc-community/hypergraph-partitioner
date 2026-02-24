@@ -69,7 +69,7 @@ class TestFindValley:
         segs = [
             self._make_value_seg(3),  # rho=3
             self._make_value_seg(1),  # rho=1 (minimum)
-            self._make_stop_seg(),     # Stop
+            self._make_stop_seg(),  # Stop
         ]
         before, valley, rest = find_valley(segs)
         assert len(valley) >= 1
@@ -161,7 +161,5 @@ class TestMergeSeamsWithMock:
             _make_seg(seam=SeamStop()),
             _make_seg(seam=SeamStop()),
         ]
-        result = merge_seams(
-            self._trivial_hyp, self._id_part, k=2, n_wires=4, segments=segs
-        )
+        result = merge_seams(self._trivial_hyp, self._id_part, k=2, n_wires=4, segments=segs)
         assert all(isinstance(s.seam, SeamStop) for s in result)

@@ -23,7 +23,7 @@ CIRCUITS_DIR = Path(__file__).parent.parent.parent / "circuits"
 
 class TestQGateParsing:
     def test_h_gate(self):
-        text = "Inputs: 0:Qbit\nQGate[\"H\"](0)\nOutputs: 0:Qbit"
+        text = 'Inputs: 0:Qbit\nQGate["H"](0)\nOutputs: 0:Qbit'
         c = parse_circuit(text)
         assert len(c.gates) == 1
         g = c.gates[0]
@@ -33,7 +33,7 @@ class TestQGateParsing:
         assert g.controls == []
 
     def test_cnot_with_control(self):
-        text = "Inputs: 0:Qbit, 1:Qbit\nQGate[\"not\"](0) with controls=[+1]\nOutputs: 0:Qbit, 1:Qbit"
+        text = 'Inputs: 0:Qbit, 1:Qbit\nQGate["not"](0) with controls=[+1]\nOutputs: 0:Qbit, 1:Qbit'
         c = parse_circuit(text)
         g = c.gates[0]
         assert isinstance(g, QGate)
@@ -42,13 +42,13 @@ class TestQGateParsing:
         assert g.controls[0].positive is True
 
     def test_negative_control(self):
-        text = "Inputs: 0:Qbit, 1:Qbit\nQGate[\"not\"](0) with controls=[-1]\nOutputs: 0:Qbit, 1:Qbit"
+        text = 'Inputs: 0:Qbit, 1:Qbit\nQGate["not"](0) with controls=[-1]\nOutputs: 0:Qbit, 1:Qbit'
         c = parse_circuit(text)
         g = c.gates[0]
         assert g.controls[0].positive is False
 
     def test_cz_gate(self):
-        text = "Inputs: 0:Qbit, 1:Qbit\nQGate[\"CZ\"](0) with controls=[+1]\nOutputs: 0:Qbit, 1:Qbit"
+        text = 'Inputs: 0:Qbit, 1:Qbit\nQGate["CZ"](0) with controls=[+1]\nOutputs: 0:Qbit, 1:Qbit'
         c = parse_circuit(text)
         g = c.gates[0]
         assert isinstance(g, QGate)
@@ -57,7 +57,7 @@ class TestQGateParsing:
 
 class TestQRotParsing:
     def test_qrot_with_control(self):
-        text = "Inputs: 0:Qbit, 1:Qbit\nQRot[\"R(2pi/%)\",4.0](19) with controls=[+18]\nOutputs: 0:Qbit, 1:Qbit"
+        text = 'Inputs: 0:Qbit, 1:Qbit\nQRot["R(2pi/%)",4.0](19) with controls=[+18]\nOutputs: 0:Qbit, 1:Qbit'
         c = parse_circuit(text)
         g = c.gates[0]
         assert isinstance(g, QRot)
@@ -65,7 +65,7 @@ class TestQRotParsing:
         assert g.params == [4.0]
 
     def test_qrot_no_control(self):
-        text = "Inputs: 0:Qbit\nQRot[\"Rz\",1.5](0)\nOutputs: 0:Qbit"
+        text = 'Inputs: 0:Qbit\nQRot["Rz",1.5](0)\nOutputs: 0:Qbit'
         c = parse_circuit(text)
         g = c.gates[0]
         assert isinstance(g, QRot)
@@ -145,7 +145,7 @@ class TestCircuitParsing:
 
 class TestEmitCircuit:
     def test_roundtrip_simple(self):
-        text = "Inputs: 0:Qbit, 1:Qbit\nQGate[\"H\"](0)\nQGate[\"CZ\"](0) with controls=[+1]\nOutputs: 0:Qbit, 1:Qbit"
+        text = 'Inputs: 0:Qbit, 1:Qbit\nQGate["H"](0)\nQGate["CZ"](0) with controls=[+1]\nOutputs: 0:Qbit, 1:Qbit'
         c = parse_circuit(text)
         emitted = emit_circuit(c)
         c2 = parse_circuit(emitted)

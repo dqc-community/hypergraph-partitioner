@@ -89,7 +89,9 @@ def _parse_qgate(line: str) -> QGate | None:
 
 def _parse_qrot(line: str) -> QRot | None:
     """QRot["name",p1,p2,...](w) with controls=[...]"""
-    m = re.match(r'^QRot\["([^"]+)"(,[^\]]*?)?\]\*?\(([^)]*)\)(\s+with controls=\[([^\]]*)\])?', line)
+    m = re.match(
+        r'^QRot\["([^"]+)"(,[^\]]*?)?\]\*?\(([^)]*)\)(\s+with controls=\[([^\]]*)\])?', line
+    )
     if not m:
         return None
     name = m.group(1)
@@ -213,7 +215,7 @@ def _parse_comment(line: str) -> Comment | None:
     wire_labels: list[tuple[Wire, str]] = []
     if body:
         # Parse comma-separated  w:"label"  pairs
-        for item in re.split(r',\s*(?=\d)', body):
+        for item in re.split(r",\s*(?=\d)", body):
             item = item.strip()
             wm = re.match(r'(\d+):"([^"]*)"', item)
             if wm:
@@ -256,10 +258,10 @@ def parse_circuit(text: str) -> Circuit:
             continue
 
         if line.startswith("Inputs:"):
-            inputs = _parse_wire_decls(line[len("Inputs:"):].strip())
+            inputs = _parse_wire_decls(line[len("Inputs:") :].strip())
             continue
         if line.startswith("Outputs:"):
-            outputs = _parse_wire_decls(line[len("Outputs:"):].strip())
+            outputs = _parse_wire_decls(line[len("Outputs:") :].strip())
             continue
 
         gate: Gate | None = None

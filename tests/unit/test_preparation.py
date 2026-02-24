@@ -58,20 +58,28 @@ class TestToControlledZ:
 
     def test_multi_control_not_converted(self):
         # Two-control 'not' is not converted by to_controlled_z (only single control)
-        g = QGate(name="not", inputs=[0], controls=[
-            SignedWire(wire=1, positive=True),
-            SignedWire(wire=2, positive=True),
-        ])
+        g = QGate(
+            name="not",
+            inputs=[0],
+            controls=[
+                SignedWire(wire=1, positive=True),
+                SignedWire(wire=2, positive=True),
+            ],
+        )
         result = to_controlled_z([g])
         assert result == [g]
 
 
 class TestDecomposeToffoli:
     def test_toffoli_decomposes(self):
-        g = QGate(name="not", inputs=[0], controls=[
-            SignedWire(wire=1, positive=True),
-            SignedWire(wire=2, positive=True),
-        ])
+        g = QGate(
+            name="not",
+            inputs=[0],
+            controls=[
+                SignedWire(wire=1, positive=True),
+                SignedWire(wire=2, positive=True),
+            ],
+        )
         result = decompose_toffoli([g])
         # Should produce more than 1 gate
         assert len(result) > 3
@@ -87,10 +95,14 @@ class TestDecomposeToffoli:
         assert result == [g]
 
     def test_negative_control_toffoli(self):
-        g = QGate(name="not", inputs=[0], controls=[
-            SignedWire(wire=1, positive=True),
-            SignedWire(wire=2, positive=False),
-        ])
+        g = QGate(
+            name="not",
+            inputs=[0],
+            controls=[
+                SignedWire(wire=1, positive=True),
+                SignedWire(wire=2, positive=False),
+            ],
+        )
         result = decompose_toffoli([g])
         # Should add X gates around the decomposition for wire 2
         assert len(result) > 1
@@ -135,6 +147,7 @@ class TestPrepareCircuit:
     def test_simple_pipeline(self):
         """Full pipeline on simple circuit: 3 CNOTs become CZ-based."""
         from quipper_distributor.parsing.quipper_ascii import parse_circuit
+
         text = (
             "Inputs: 0:Qbit, 1:Qbit, 2:Qbit, 3:Qbit\n"
             'QGate["not"](3) with controls=[+1]\n'
@@ -151,6 +164,7 @@ class TestPrepareCircuit:
     def test_toffoli_pipeline(self):
         """CCX in the circuit gets decomposed when keep_ccz=False."""
         from quipper_distributor.parsing.quipper_ascii import parse_circuit
+
         text = (
             "Inputs: 0:Qbit, 1:Qbit, 2:Qbit\n"
             'QGate["not"](0) with controls=[+1, +2]\n'
