@@ -5,10 +5,10 @@ requires-python = ">=3.13"
 dependencies = [
     "bosonic-sdk",
     "pydantic>=2.7.0",
+    "kahypar>=1.3.5",
 ]
 
 [project.optional-dependencies]
-kahypar = ["kahypar>=1.3.5"]
 dev = ["pytest>=8.3.3", "ruff>=0.12.5"]
 
 [project.scripts]

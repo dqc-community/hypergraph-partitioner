@@ -14,7 +14,7 @@ from quipper_distributor.config import KAHYPAR_CONFIG
 
 
 def test_stats_non_negative_for_cx_circuit(monkeypatch) -> None:
-    monkeypatch.setenv("QUIPPER_DISTRIBUTOR_PARTITIONER", "fallback")
+    monkeypatch.setenv("DISTRIBUTOR_PARTITIONER", "fallback")
     circuit = Translator().from_qasm(
         """
         OPENQASM 2.0;
@@ -39,7 +39,7 @@ def test_stats_non_negative_for_cx_circuit(monkeypatch) -> None:
 
 
 def test_stats_handle_toffoli(monkeypatch) -> None:
-    monkeypatch.setenv("QUIPPER_DISTRIBUTOR_PARTITIONER", "fallback")
+    monkeypatch.setenv("DISTRIBUTOR_PARTITIONER", "fallback")
     circuit = Translator().from_qasm(
         """
         OPENQASM 2.0;

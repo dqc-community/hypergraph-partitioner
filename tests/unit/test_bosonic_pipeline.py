@@ -14,7 +14,7 @@ from quipper_distributor.config import KAHYPAR_CONFIG
 
 
 def test_partition_circuit_runs_on_small_qasm(monkeypatch) -> None:
-    monkeypatch.setenv("QUIPPER_DISTRIBUTOR_PARTITIONER", "fallback")
+    monkeypatch.setenv("DISTRIBUTOR_PARTITIONER", "fallback")
 
     circuit = Translator().from_qasm(
         """

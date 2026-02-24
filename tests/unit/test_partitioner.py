@@ -23,7 +23,7 @@ def _seg(partition: dict[int, int], seam=SeamCompute()) -> Segment:
 
 
 def test_partition_hypergraph_fallback(monkeypatch) -> None:
-    monkeypatch.setenv("QUIPPER_DISTRIBUTOR_PARTITIONER", "fallback")
+    monkeypatch.setenv("DISTRIBUTOR_PARTITIONER", "fallback")
     hyp = {0: [Hedge(nan=0, wires=[(1, 0)], out_pos=1)]}
 
     part = partition_hypergraph(hyp, n_qubits=4, k=2, config_path="unused.ini")

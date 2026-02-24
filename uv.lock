@@ -1891,6 +1891,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "bosonic-sdk" },
+    { name = "kahypar" },
     { name = "pydantic" },
 ]
 
@@ -1899,19 +1900,16 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
-kahypar = [
-    { name = "kahypar" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "bosonic-sdk", editable = "../dqcomp" },
-    { name = "kahypar", marker = "extra == 'kahypar'", specifier = ">=1.3.5" },
+    { name = "kahypar", specifier = ">=1.3.5" },
     { name = "pydantic", specifier = ">=2.7.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.3" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.5" },
 ]
-provides-extras = ["kahypar", "dev"]
+provides-extras = ["dev"]
 
 [[package]]
 name = "referencing"
