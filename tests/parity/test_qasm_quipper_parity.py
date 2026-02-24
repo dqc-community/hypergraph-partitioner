@@ -1,10 +1,4 @@
-"""Temporary parity tests: legacy Quipper path vs new QASM path.
-
-These tests iterate all circuit files under `circuits/` and compare partition
-metrics between:
-- old Quipper ASCII pipeline, and
-- new QASM + bosonic_model pipeline.
-"""
+"""Temporary parity tests: legacy Quipper path vs converted QASM fixtures."""
 
 from __future__ import annotations
 
@@ -16,12 +10,13 @@ from bosonic_model.qasm import Translator
 from quipper_distributor.bosonic_adapter import circuit_to_legacy_gates
 from quipper_distributor.config import KAHYPAR_CONFIG
 from quipper_distributor.dist_circuit_builder import build_circuit
-from quipper_distributor.models.gate import QGate, QRot, SignedWire, get_wires, is_cz
+from quipper_distributor.models.gate import get_wires, is_cz
 from quipper_distributor.parsing.quipper_ascii import parse_circuit
 from quipper_distributor.partitioner import partitioner
 from quipper_distributor.preparation import prepare_circuit
 
-CIRCUITS_DIR = Path(__file__).parent.parent.parent / "circuits"
+LEGACY_CIRCUITS_DIR = Path(__file__).parent.parent / "fixtures" / "quipper_circuits"
+QASM_CIRCUITS_DIR = Path(__file__).parent.parent.parent / "circuits"
 
 
 def _count_non_local(segments) -> int:
@@ -73,75 +68,26 @@ def _run_new(qasm_text: str, k: int, init_seg_size: int = 1000) -> tuple[int, in
     return len(gates), sum(1 for g in gates if is_cz(g)), _count_non_local(segments), n_ebits + n_teleports
 
 
-def _quipper_to_qasm_proxy(quipper_ascii: str) -> tuple[str, int]:
-    """Convert a Quipper circuit into a QASM proxy preserving interaction structure.
-
-    The mapping is intentionally structural (for partition parity), not semantic:
-    - controlled `not` -> `cx`/`ccx`
-    - controlled `QRot` -> `cx` (so preparation still lowers to CZ-like interaction)
-    - single-qubit gates (`H`, etc.) preserved where straightforward
-    - comments are ignored
-    """
-    circuit = parse_circuit(quipper_ascii)
-    n_qubits = len(circuit.inputs)
-
-    lines: list[str] = [
-        "OPENQASM 2.0;",
-        'include "qelib1.inc";',
-        f"qreg q[{n_qubits}];",
-    ]
-
-    for gate in circuit.gates:
-        if isinstance(gate, QGate):
-            if gate.name == "H" and len(gate.inputs) == 1 and not gate.controls:
-                lines.append(f"h q[{gate.inputs[0]}];")
-                continue
-
-            if gate.name == "not" and len(gate.inputs) == 1:
-                target = gate.inputs[0]
-                if len(gate.controls) == 0:
-                    lines.append(f"x q[{target}];")
-                    continue
-                if len(gate.controls) == 1 and gate.controls[0].positive:
-                    ctrl = gate.controls[0].wire
-                    lines.append(f"cx q[{ctrl}], q[{target}];")
-                    continue
-                if len(gate.controls) == 2 and all(sw.positive for sw in gate.controls):
-                    c1 = gate.controls[0].wire
-                    c2 = gate.controls[1].wire
-                    lines.append(f"ccx q[{c1}], q[{c2}], q[{target}];")
-                    continue
-
-        if isinstance(gate, QRot) and len(gate.inputs) == 1 and len(gate.controls) == 1:
-            # Structural proxy for controlled rotations.
-            ctrl = gate.controls[0].wire
-            target = gate.inputs[0]
-            lines.append(f"cx q[{ctrl}], q[{target}];")
-            continue
-
-    return "\n".join(lines), n_qubits
-
-
 def _k_for_qubits(n_qubits: int) -> int:
-    # Keep k>=2 and enough capacity in parity runs.
     return 3 if n_qubits >= 12 else 2
 
 
-@pytest.mark.parametrize("circuit_path", sorted(CIRCUITS_DIR.iterdir()), ids=lambda p: p.name)
-def test_all_root_circuits_parity(monkeypatch, circuit_path: Path) -> None:
+@pytest.mark.parametrize("legacy_path", sorted(LEGACY_CIRCUITS_DIR.iterdir()), ids=lambda p: p.name)
+def test_all_root_circuits_parity(monkeypatch, legacy_path: Path) -> None:
     monkeypatch.setenv("QUIPPER_DISTRIBUTOR_PARTITIONER", "fallback")
 
-    quipper_ascii = circuit_path.read_text()
-    qasm_proxy, n_qubits = _quipper_to_qasm_proxy(quipper_ascii)
+    qasm_path = QASM_CIRCUITS_DIR / legacy_path.name
+    assert qasm_path.exists(), f"Missing converted QASM fixture: {qasm_path}"
+
+    quipper_ascii = legacy_path.read_text()
+    qasm_text = qasm_path.read_text()
+    n_qubits = len(parse_circuit(quipper_ascii).inputs)
     k = _k_for_qubits(n_qubits)
 
     old_gate_count, old_cz_count, old_nonlocal, old_total_resources = _run_old(quipper_ascii, k=k)
-    new_gate_count, new_cz_count, new_nonlocal, new_total_resources = _run_new(qasm_proxy, k=k)
+    new_gate_count, new_cz_count, new_nonlocal, new_total_resources = _run_new(qasm_text, k=k)
 
-    # Core partitioning parity assertions.
     assert old_cz_count == new_cz_count
     assert old_nonlocal == new_nonlocal
     assert old_total_resources == new_total_resources
-
-    # Gate counts can differ due to structural proxying, but should stay close.
     assert abs(old_gate_count - new_gate_count) <= max(4, old_gate_count // 20)

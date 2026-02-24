@@ -17,6 +17,11 @@ from quipper_distributor.bosonic_pipeline import (
 )
 
 
+def _looks_like_quipper_ascii(text: str) -> bool:
+    stripped = text.lstrip()
+    return stripped.startswith("Inputs:") or stripped.startswith("QGate[")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="quipper-distribute",
@@ -78,8 +83,14 @@ def main() -> None:
     qasm_text = sys.stdin.read()
     try:
         circuit = Translator().from_qasm(qasm_text)
-    except (QasmError, ValueError) as exc:
+    except (QasmError, ValueError, Exception) as exc:  # noqa: BLE001
         print(f"Failed to parse OpenQASM input: {exc}", file=sys.stderr)
+        if _looks_like_quipper_ascii(qasm_text):
+            print(
+                "Input appears to be Quipper ASCII (e.g. starts with Inputs:). "
+                "This CLI now accepts OpenQASM 2.0 only.",
+                file=sys.stderr,
+            )
         sys.exit(1)
 
     n_qubits_total = k * seg_size

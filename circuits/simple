@@ -1,6 +1,6 @@
-Inputs: 0:Qbit, 1:Qbit, 2:Qbit, 3:Qbit
-QGate["not"](3) with controls=[+1]
-QGate["not"](2) with controls=[+1]
-QGate["not"](0) with controls=[+1]
-Outputs: 0:Qbit, 1:Qbit, 2:Qbit, 3:Qbit
-
+OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[4];
+cx q[1], q[3];
+cx q[1], q[2];
+cx q[1], q[0];

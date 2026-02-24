@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
+from quipper_distributor.models.circuit import WireType
 from quipper_distributor.models.gate import (
     Comment,
     QGate,
@@ -13,12 +12,10 @@ from quipper_distributor.models.gate import (
     QMeas,
     QRot,
     QTerm,
-    SignedWire,
 )
-from quipper_distributor.models.circuit import WireType
 from quipper_distributor.parsing.quipper_ascii import emit_circuit, parse_circuit
 
-CIRCUITS_DIR = Path(__file__).parent.parent.parent / "circuits"
+CIRCUITS_DIR = Path(__file__).parent.parent / "fixtures" / "quipper_circuits"
 
 
 class TestQGateParsing:
