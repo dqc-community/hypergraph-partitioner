@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import platform
+from heapq import heapify, heappop, heappush
+from itertools import count
 from collections.abc import Callable
 from fractions import Fraction
 
@@ -148,7 +150,7 @@ def _find_valley_rec(segments: list[Segment], pos: int, current_min: int | None)
 
 
 def match_partitions(part1: Partition, part2: Partition, k: int, n_wires: int) -> Matching:
-    """Match blocks between adjacent partitions with branch-and-bound heuristic."""
+    """Match blocks between adjacent partitions with a best-first branch-and-bound search."""
     p1 = {w: b for w, b in part1.items() if w < n_wires}
     p2 = {w: b for w, b in part2.items() if w < n_wires}
 
@@ -159,9 +161,9 @@ def match_partitions(part1: Partition, part2: Partition, k: int, n_wires: int) -
     heuristic = _heuristic_cost(blocks1, p2)
     all_blocks = list(range(k))
     initial_cost = sum(heuristic.values())
-    initial: list[tuple[Matching, int]] = [(dict(), initial_cost)]
+    initial: list[tuple[int, int, Matching]] = [(initial_cost, 0, dict())]
 
-    return _match_partitions_rec(blocks1, p2, heuristic, all_blocks, initial)
+    return _match_partitions_search(blocks1, p2, heuristic, all_blocks, initial)
 
 
 def _heuristic_cost(blocks1: dict[int, list[Wire]], part2: Partition) -> dict[int, int]:
@@ -182,40 +184,36 @@ def _heuristic_cost(blocks1: dict[int, list[Wire]], part2: Partition) -> dict[in
     return result
 
 
-def _match_partitions_rec(
+def _match_partitions_search(
     blocks1: dict[int, list[Wire]],
     part2: Partition,
     heuristic: dict[int, int],
     all_blocks: list[int],
-    matchings: list[tuple[Matching, int]],
+    queue: list[tuple[int, int, Matching]],
 ) -> Matching:
-    while True:
-        if not matchings:
-            return {b: b for b in all_blocks}
+    heapify(queue)
+    sequence = count(start=1)
 
-        best_matching, best_cost = matchings[0]
+    while queue:
+        best_cost, _, best_matching = heappop(queue)
         if len(best_matching) == len(all_blocks):
             return best_matching
 
-        unmatched = [b for b in all_blocks if b not in best_matching]
-        if not unmatched:
-            return best_matching
-
-        this_block = unmatched[0]
+        unmatched_blocks = [b for b in all_blocks if b not in best_matching]
+        this_block = unmatched_blocks[0]
         this_wires = blocks1[this_block]
 
-        already_used = set(best_matching.values())
-        candidates = [b for b in all_blocks if b not in already_used]
+        used_targets = set(best_matching.values())
+        candidate_targets = [b for b in all_blocks if b not in used_targets]
 
-        new_matchings: list[tuple[Matching, int]] = []
-        for block in candidates:
+        for block in candidate_targets:
             new_matching = dict(best_matching)
             new_matching[this_block] = block
             real_cost = sum(1 for w in this_wires if w in part2 and part2[w] != block)
             new_cost = best_cost - heuristic[this_block] + real_cost
-            new_matchings.append((new_matching, new_cost))
+            heappush(queue, (new_cost, next(sequence), new_matching))
 
-        matchings = sorted(matchings[1:] + new_matchings, key=lambda x: x[1])
+    return {b: b for b in all_blocks}
 
 
 def compute_new_seams(n_wires: int, segments: list[Segment]) -> list[Segment]:

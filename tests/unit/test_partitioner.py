@@ -61,6 +61,43 @@ def test_match_partitions_returns_full_mapping() -> None:
 
     assert set(match.keys()) == {0, 1}
     assert set(match.values()) == {0, 1}
+    assert match == {0: 1, 1: 0}
+
+
+def test_match_partitions_prefers_lowest_cost_full_matching() -> None:
+    p1 = {0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 2}
+    p2 = {0: 2, 1: 2, 2: 0, 3: 0, 4: 1, 5: 1}
+
+    match = match_partitions(p1, p2, k=3, n_wires=6)
+
+    assert match == {0: 2, 1: 0, 2: 1}
+
+
+def test_match_partitions_handles_nonzero_optimal_cost() -> None:
+    p1 = {0: 0, 1: 0, 2: 1, 3: 1}
+    p2 = {0: 0, 1: 1, 2: 0, 3: 1}
+
+    match = match_partitions(p1, p2, k=2, n_wires=4)
+
+    assert match == {0: 0, 1: 1}
+
+
+def test_match_partitions_handles_empty_blocks() -> None:
+    p1 = {0: 0, 1: 0}
+    p2 = {0: 1, 1: 1}
+
+    match = match_partitions(p1, p2, k=3, n_wires=2)
+
+    assert match == {0: 1, 1: 0, 2: 2}
+
+
+def test_match_partitions_preserves_identity_when_already_aligned() -> None:
+    p1 = {0: 0, 1: 1}
+    p2 = {0: 0, 1: 1}
+
+    match = match_partitions(p1, p2, k=3, n_wires=2)
+
+    assert match == {0: 0, 1: 1, 2: 2}
 
 
 def test_count_teles_counts_wire_moves() -> None:
