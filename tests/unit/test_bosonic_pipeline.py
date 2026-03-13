@@ -5,6 +5,7 @@ from __future__ import annotations
 from bosonic_model.qasm import Translator
 
 from hypergraph_partitioner.bosonic_pipeline import (
+    _initial_segments,
     count_interactions,
     count_nonlocal_interactions,
     count_teleports,
@@ -37,3 +38,32 @@ def test_partition_circuit_runs_on_small_qasm() -> None:
     assert count_interactions(circuit.instructions) >= 2
     assert count_nonlocal_interactions(segments) >= 0
     assert count_teleports(segments, circuit.qubits()) >= 0
+
+
+def test_initial_segments_splits_by_interaction_count() -> None:
+    circuit = Translator().from_qasm(
+        """
+        OPENQASM 2.0;
+        include "qelib1.inc";
+        qreg q[3];
+        h q[0];
+        cx q[0], q[1];
+        h q[2];
+        cx q[1], q[2];
+        """
+    )
+
+    segments = _initial_segments(
+        circuit.instructions,
+        init_seg_size=1,
+        n_qubits=circuit.qubits(),
+        k=2,
+        max_hedge_dist=100,
+        config_path=KAHYPAR_CONFIG,
+    )
+
+    assert len(segments) == 2
+    assert count_interactions(segments[0].gates) == 1
+    assert count_interactions(segments[1].gates) == 1
+    assert segments[0].wire_range == (0, 0)
+    assert segments[1].wire_range == (1, 1)

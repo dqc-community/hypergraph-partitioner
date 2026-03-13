@@ -14,26 +14,14 @@ from hypergraph_partitioner.hgraph_builder import count_cuts, hypergraph_to_kahy
 from hypergraph_partitioner.models.hypergraph import Hypergraph, Matching, Partition, Wire
 from hypergraph_partitioner.models.segment import Seam, SeamCompute, SeamStop, SeamValue, Segment
 
+import kahypar
+
 ToHyp = Callable[[list[object]], Hypergraph]
 ToPart = Callable[[Hypergraph], Partition]
 
 
 def partition_hypergraph(hyp: Hypergraph, n_qubits: int, k: int, config_path: str) -> Partition:
-    """Partition hypergraph.
-
-    Mode is controlled by DISTRIBUTOR_PARTITIONER:
-    - "kahypar" (default): always use KaHyPar
-    - "auto": use fallback on macOS, KaHyPar elsewhere
-    - "fallback": always use deterministic round-robin assignment
-    """
-    mode = os.environ.get("DISTRIBUTOR_PARTITIONER", "kahypar").strip().lower()
-    if mode not in {"auto", "fallback", "kahypar"}:
-        mode = "kahypar"
-
-    if mode == "fallback" or (mode == "auto" and platform.system() == "Darwin"):
-        return {v: (v % k) for v in range(n_qubits)}
-
-    import kahypar  # type: ignore[import]
+    """Partition hypergraph."""
 
     indices, nets, weights = hypergraph_to_kahypar(hyp, n_qubits)
     n_nets = len(indices) - 1
