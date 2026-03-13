@@ -11,6 +11,7 @@ from hypergraph_partitioner.partitioner import (
     compute_new_seams,
     count_teles,
     find_valley,
+    get_rho,
     match_partitions,
     merge_seams,
     partition_hypergraph,
@@ -19,6 +20,10 @@ from hypergraph_partitioner.partitioner import (
 
 def _seg(partition: dict[int, int], seam=SeamCompute()) -> Segment:
     hyp = {0: [Hedge(nan=0, wires=[(1, 0)], out_pos=1)], 1: [Hedge(nan=0, wires=[(0, 0)], out_pos=1)]}
+    return Segment(gates=[], hypergraph=hyp, partition=partition, seam=seam, wire_range=(0, 0))
+
+
+def _seg_with_hyp(partition: dict[int, int], hyp: dict[int, list[Hedge]], seam=SeamCompute()) -> Segment:
     return Segment(gates=[], hypergraph=hyp, partition=partition, seam=seam, wire_range=(0, 0))
 
 
@@ -38,6 +43,52 @@ def test_compute_new_seams_sets_seam_value() -> None:
 
     assert isinstance(updated[0].seam, SeamValue)
     assert updated[0].seam.value >= Fraction(0)
+
+
+def test_get_rho_is_zero_when_no_wires_change_blocks() -> None:
+    seg1 = _seg({0: 0, 1: 1})
+    seg2 = _seg({0: 0, 1: 1})
+
+    rho = get_rho(2, seg1, seg2)
+
+    assert rho == Fraction(0)
+
+
+def test_get_rho_uses_smaller_of_adjacent_wire_weights() -> None:
+    hyp1 = {
+        0: [Hedge(nan=0, wires=[(1, 0)], out_pos=1)],
+        1: [Hedge(nan=0, wires=[(0, 0)], out_pos=1)],
+    }
+    hyp2 = {
+        0: [
+            Hedge(nan=0, wires=[(1, 0)], out_pos=1),
+            Hedge(nan=1, wires=[(1, 1)], out_pos=2),
+        ],
+        1: [Hedge(nan=0, wires=[(0, 0)], out_pos=1)],
+    }
+    seg1 = _seg_with_hyp({0: 0, 1: 1}, hyp1)
+    seg2 = _seg_with_hyp({0: 1, 1: 1}, hyp2)
+
+    rho = get_rho(2, seg1, seg2)
+
+    assert rho == Fraction(1, 2)
+
+
+def test_get_rho_sums_weights_for_multiple_changing_wires() -> None:
+    hyp1 = {
+        0: [Hedge(nan=0, wires=[(10, 0)], out_pos=1)],
+        1: [Hedge(nan=0, wires=[(11, 0)], out_pos=1), Hedge(nan=1, wires=[(12, 1)], out_pos=2)],
+    }
+    hyp2 = {
+        0: [Hedge(nan=0, wires=[(10, 0)], out_pos=1), Hedge(nan=1, wires=[(13, 1)], out_pos=2)],
+        1: [Hedge(nan=0, wires=[(11, 0)], out_pos=1), Hedge(nan=1, wires=[(12, 1)], out_pos=2)],
+    }
+    seg1 = _seg_with_hyp({0: 0, 1: 0}, hyp1)
+    seg2 = _seg_with_hyp({0: 1, 1: 1}, hyp2)
+
+    rho = get_rho(2, seg1, seg2)
+
+    assert rho == Fraction(5, 6)
 
 
 def test_find_valley_returns_nonempty_middle() -> None:
