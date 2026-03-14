@@ -11,6 +11,7 @@ from collections.abc import Iterable
 from bosonic_model import BarrierInstruction, Circuit, ConditionalInstruction
 from bosonic_model.instructions import InstructionType
 
+from hypergraph_partitioner.cz_commutation import push_cz_early
 from hypergraph_partitioner.hgraph_builder import _split_long_hedges
 from hypergraph_partitioner.models.hypergraph import Hedge, Hypergraph
 from hypergraph_partitioner.models.segment import SeamCompute, Segment
@@ -175,9 +176,9 @@ def partition_circuit(
 
 
 def _preprocess(circuit: Circuit) -> Circuit:
-    # step 1
     res = normalize_to_one_qubit_and_cz(circuit)
-    # step 2 ...
+    instructions = push_cz_early(res.instructions)
+    res = Circuit(qregs=res.qregs, cregs=res.cregs, instructions=instructions)
     return res
 
 

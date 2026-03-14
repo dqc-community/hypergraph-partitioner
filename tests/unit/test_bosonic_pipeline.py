@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from bosonic_converters import CircuitConverters
 from bosonic_model.qasm import Translator
+from qiskit.quantum_info import Operator
 
 from hypergraph_partitioner.bosonic_pipeline import (
     _initial_segments,
+    _preprocess,
+    build_hypergraph_from_instructions,
     count_interactions,
     count_nonlocal_interactions,
     count_teleports,
@@ -155,3 +159,78 @@ def test_normalize_to_one_qubit_and_cz_is_deterministic() -> None:
     assert [inst.model_dump() for inst in normalized_a.instructions] == [
         inst.model_dump() for inst in normalized_b.instructions
     ]
+
+
+def test_preprocess_step2_pulls_cz_earlier_for_supported_u() -> None:
+    circuit = Translator().from_qasm(
+        """
+        OPENQASM 2.0;
+        include "qelib1.inc";
+        qreg q[2];
+        x q[0];
+        cz q[0], q[1];
+        """
+    )
+
+    preprocessed = _preprocess(circuit)
+
+    assert [getattr(inst, "kind", None) for inst in preprocessed.instructions] == ["cz", "u", "u"]
+    assert getattr(preprocessed.instructions[0], "qubits", None) == [0, 1]
+
+
+def test_preprocess_step2_clusters_czs_into_a_single_hyperedge() -> None:
+    circuit = Translator().from_qasm(
+        """
+        OPENQASM 2.0;
+        include "qelib1.inc";
+        qreg q[3];
+        x q[0];
+        cz q[0], q[1];
+        z q[0];
+        cz q[0], q[2];
+        """
+    )
+
+    step1_only = normalize_to_one_qubit_and_cz(circuit)
+    preprocessed = _preprocess(circuit)
+
+    step1_hyp = build_hypergraph_from_instructions(
+        step1_only.instructions,
+        n_qubits=circuit.qubits(),
+        max_hedge_dist=100,
+    )
+    preprocessed_hyp = build_hypergraph_from_instructions(
+        preprocessed.instructions,
+        n_qubits=circuit.qubits(),
+        max_hedge_dist=100,
+    )
+
+    assert [getattr(inst, "kind", None) for inst in preprocessed.instructions[:2]] == ["cz", "cz"]
+
+    assert len(step1_hyp[0]) == 2
+    assert all(len(hedge.wires) == 1 for hedge in step1_hyp[0])
+
+    assert len(preprocessed_hyp[0]) == 1
+    assert len(preprocessed_hyp[0][0].wires) == 2
+
+
+def test_preprocess_step2_preserves_circuit_unitary() -> None:
+    circuit = Translator().from_qasm(
+        """
+        OPENQASM 2.0;
+        include "qelib1.inc";
+        qreg q[3];
+        x q[0];
+        cz q[0], q[1];
+        z q[0];
+        cz q[0], q[2];
+        """
+    )
+
+    step1_only = normalize_to_one_qubit_and_cz(circuit)
+    preprocessed = _preprocess(circuit)
+
+    step1_op = Operator(CircuitConverters.to_qiskit(step1_only))
+    preprocessed_op = Operator(CircuitConverters.to_qiskit(preprocessed))
+
+    assert preprocessed_op.equiv(step1_op)
