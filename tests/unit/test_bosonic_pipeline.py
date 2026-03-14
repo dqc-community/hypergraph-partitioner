@@ -13,6 +13,8 @@ from qiskit.quantum_info import Operator
 
 from hypergraph_partitioner.bosonic_pipeline import (
     _annotate_partitioned_circuit,
+    _ignore_last_seam,
+    _preprocess,
     _initial_segments,
     build_hypergraph_from_instructions,
     count_interactions,
@@ -364,3 +366,76 @@ def test_annotated_circuit_marks_nonlocal_czs_and_boundary_teleports() -> None:
     assert count_teleports(result) == 1
     assert any(isinstance(op, NonlocalCZOp) for op in result.operations)
     assert any(isinstance(op, BoundaryTeleportOp) for op in result.operations)
+
+
+def test_partition_circuit_end_to_end_annotates_nonlocal_czs() -> None:
+    circuit = Translator().from_qasm(
+        """
+        OPENQASM 2.0;
+        include "qelib1.inc";
+        qreg q[6];
+        h q[1];
+        cx q[0], q[1];
+        h q[3];
+        cx q[2], q[3];
+        cx q[0], q[3];
+        h q[5];
+        cx q[4], q[5];
+        h q[1];
+        h q[4];
+        cx q[1], q[4];
+        h q[3];
+        h q[4];
+        h q[5];
+        """
+    )
+
+    result = partition_circuit(
+        circuit,
+        k=2,
+        init_seg_size=1,
+        max_hedge_dist=100,
+        config_path=KAHYPAR_CONFIG,
+    )
+
+    nonlocal_ops = [op for op in result.operations if isinstance(op, NonlocalCZOp)]
+
+    assert len(result.segments) >= 1
+    assert len(result.boundaries) == max(0, len(result.segments) - 1)
+    assert len(nonlocal_ops) >= 1
+    assert all(op.control_block != op.target_block for op in nonlocal_ops)
+
+
+def test_real_circuit_initial_segments_annotate_multiple_segments_and_teleports() -> None:
+    circuit = Translator().from_qasm(
+        """
+        OPENQASM 2.0;
+        include "qelib1.inc";
+        qreg q[6];
+        cx q[0], q[1];
+        cx q[0], q[2];
+        cx q[0], q[1];
+        x q[0];
+        z q[1];
+        cx q[0], q[4];
+        cx q[0], q[5];
+        cx q[0], q[4];
+        """
+    )
+
+    normalized = _preprocess(circuit)
+    initial = _initial_segments(
+        normalized.instructions,
+        init_seg_size=1,
+        n_qubits=circuit.qubits(),
+        k=2,
+        max_hedge_dist=100,
+        config_path=KAHYPAR_CONFIG,
+    )
+    result = _annotate_partitioned_circuit(_ignore_last_seam(initial))
+
+    teleport_ops = [op for op in result.operations if isinstance(op, BoundaryTeleportOp)]
+    assert len(result.segments) >= 2
+    assert len(result.boundaries) == len(result.segments) - 1
+    assert len(teleport_ops) >= 1
+    assert sum(len(boundary.teleports) for boundary in result.boundaries) == len(teleport_ops)
