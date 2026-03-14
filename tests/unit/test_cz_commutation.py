@@ -84,6 +84,43 @@ def test_measure_and_reset_block_cz_movement() -> None:
     assert push_cz_early([zrot, reset, _cz(0, 1)]) == [zrot, reset, _cz(0, 1)]
 
 
+def test_double_h_cancels() -> None:
+    h_gate = _u(0, math.pi / 2, 0.0, math.pi)
+
+    assert push_cz_early([h_gate, h_gate]) == []
+
+
+def test_h_x_h_simplifies_to_z() -> None:
+    h_gate = _u(0, math.pi / 2, 0.0, math.pi)
+    x_gate = _u(0, math.pi, 0.0, math.pi)
+
+    assert push_cz_early([h_gate, x_gate, h_gate]) == [z_u(0)]
+
+
+def test_h_z_h_simplifies_to_x() -> None:
+    h_gate = _u(0, math.pi / 2, 0.0, math.pi)
+    z_gate = z_u(0)
+    x_gate = _u(0, math.pi, 0.0, math.pi)
+
+    assert push_cz_early([h_gate, z_gate, h_gate]) == [x_gate]
+
+
+def test_push_cz_early_is_idempotent() -> None:
+    instructions = [
+        _u(0, math.pi / 2, 0.0, math.pi),
+        _u(0, math.pi, 0.0, math.pi),
+        _u(0, math.pi / 2, 0.0, math.pi),
+        _cz(0, 1),
+        _u(2, math.pi, 0.0, math.pi),
+        _cz(2, 3),
+    ]
+
+    once = push_cz_early(instructions)
+    twice = push_cz_early(once)
+
+    assert twice == once
+
+
 def test_multiple_rewrites_across_multiple_wires() -> None:
     zrot = _u(0, 0.0, 0.0, math.pi / 4)
     x_gate = _u(2, math.pi, 0.0, math.pi)
