@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+import random
+
 from bosonic_converters import CircuitConverters
 from bosonic_model.qasm import Translator
+import pytest
+from qiskit import QuantumCircuit
 from qiskit.quantum_info import Operator
 
 from hypergraph_partitioner.bosonic_pipeline import (
     _initial_segments,
-    _preprocess,
     build_hypergraph_from_instructions,
     count_interactions,
     count_nonlocal_interactions,
     count_teleports,
     partition_circuit,
 )
+from hypergraph_partitioner.cz_commutation import push_cz_early
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
 from hypergraph_partitioner.qiskit_normalization import normalize_to_one_qubit_and_cz
 
@@ -36,6 +40,48 @@ def _assert_normalized_to_one_qubit_and_cz(circuit) -> None:
             assert kind == "cz"
         else:
             assert kind in allowed_single
+
+
+def _random_supported_qiskit_circuit(
+    *,
+    n_qubits: int,
+    depth: int,
+    seed: int,
+    basis_gates: tuple[str, ...],
+) -> QuantumCircuit:
+    rng = random.Random(seed)
+    qc = QuantumCircuit(n_qubits)
+
+    one_qubit_ops = {
+        "h": lambda q: qc.h(q),
+        "x": lambda q: qc.x(q),
+        "y": lambda q: qc.y(q),
+        "z": lambda q: qc.z(q),
+        "s": lambda q: qc.s(q),
+        "t": lambda q: qc.t(q),
+    }
+    two_qubit_ops = {
+        "cx": lambda a, b: qc.cx(a, b),
+        "cz": lambda a, b: qc.cz(a, b),
+        "swap": lambda a, b: qc.swap(a, b),
+    }
+
+    for _ in range(depth):
+        gate = rng.choice(basis_gates)
+        if gate in one_qubit_ops:
+            one_qubit_ops[gate](rng.randrange(n_qubits))
+            continue
+        if gate in two_qubit_ops:
+            a, b = rng.sample(range(n_qubits), 2)
+            two_qubit_ops[gate](a, b)
+            continue
+        if gate == "ccx":
+            a, b, c = rng.sample(range(n_qubits), 3)
+            qc.ccx(a, b, c)
+            continue
+        raise AssertionError(f"Unexpected random test gate: {gate}")
+
+    return qc
 
 
 def test_partition_circuit_runs_on_small_qasm() -> None:
@@ -172,10 +218,11 @@ def test_preprocess_step2_pulls_cz_earlier_for_supported_u() -> None:
         """
     )
 
-    preprocessed = _preprocess(circuit)
+    res = normalize_to_one_qubit_and_cz(circuit)
+    preprocessed = push_cz_early(res.instructions)
 
-    assert [getattr(inst, "kind", None) for inst in preprocessed.instructions] == ["cz", "u", "u"]
-    assert getattr(preprocessed.instructions[0], "qubits", None) == [0, 1]
+    assert [getattr(inst, "kind", None) for inst in preprocessed] == ["cz", "u", "u"]
+    assert getattr(preprocessed[0], "qubits", None) == [0, 1]
 
 
 def test_preprocess_step2_clusters_czs_into_a_single_hyperedge() -> None:
@@ -192,7 +239,7 @@ def test_preprocess_step2_clusters_czs_into_a_single_hyperedge() -> None:
     )
 
     step1_only = normalize_to_one_qubit_and_cz(circuit)
-    preprocessed = _preprocess(circuit)
+    preprocessed = push_cz_early(step1_only.instructions)
 
     step1_hyp = build_hypergraph_from_instructions(
         step1_only.instructions,
@@ -200,12 +247,12 @@ def test_preprocess_step2_clusters_czs_into_a_single_hyperedge() -> None:
         max_hedge_dist=100,
     )
     preprocessed_hyp = build_hypergraph_from_instructions(
-        preprocessed.instructions,
+        preprocessed,
         n_qubits=circuit.qubits(),
         max_hedge_dist=100,
     )
 
-    assert [getattr(inst, "kind", None) for inst in preprocessed.instructions[:2]] == ["cz", "cz"]
+    assert [getattr(inst, "kind", None) for inst in preprocessed[:2]] == ["cz", "cz"]
 
     assert len(step1_hyp[0]) == 2
     assert all(len(hedge.wires) == 1 for hedge in step1_hyp[0])
@@ -228,9 +275,41 @@ def test_preprocess_step2_preserves_circuit_unitary() -> None:
     )
 
     step1_only = normalize_to_one_qubit_and_cz(circuit)
-    preprocessed = _preprocess(circuit)
+    preprocessed = push_cz_early(step1_only.instructions)
 
     step1_op = Operator(CircuitConverters.to_qiskit(step1_only))
-    preprocessed_op = Operator(CircuitConverters.to_qiskit(preprocessed))
+    preprocessed_op = Operator(CircuitConverters.to_qiskit(step1_only.model_copy(update={"instructions": preprocessed})))
+
+    assert preprocessed_op.equiv(step1_op)
+
+
+@pytest.mark.parametrize(
+    ("n_qubits", "depth", "seed", "basis_gates"),
+    [
+        (3, 14, 7, ("h", "x", "z", "cx", "cz")),
+        (4, 20, 11, ("h", "s", "t", "cx", "cz", "swap")),
+        (5, 24, 23, ("x", "y", "z", "h", "cx", "cz", "swap", "ccx")),
+        (6, 28, 31, ("h", "x", "y", "z", "s", "t", "cx", "cz", "swap", "ccx")),
+    ],
+)
+def test_preprocess_step2_preserves_unitary_for_random_supported_circuits(
+    n_qubits: int,
+    depth: int,
+    seed: int,
+    basis_gates: tuple[str, ...],
+) -> None:
+    qiskit_circuit = _random_supported_qiskit_circuit(
+        n_qubits=n_qubits,
+        depth=depth,
+        seed=seed,
+        basis_gates=basis_gates,
+    )
+    circuit = CircuitConverters.from_qiskit(qiskit_circuit)
+
+    step1_only = normalize_to_one_qubit_and_cz(circuit)
+    preprocessed = push_cz_early(step1_only.instructions)
+
+    step1_op = Operator(CircuitConverters.to_qiskit(step1_only))
+    preprocessed_op = Operator(CircuitConverters.to_qiskit(step1_only.model_copy(update={"instructions": preprocessed})))
 
     assert preprocessed_op.equiv(step1_op)
