@@ -15,6 +15,7 @@ from hypergraph_partitioner.hgraph_builder import _split_long_hedges
 from hypergraph_partitioner.models.hypergraph import Hedge, Hypergraph
 from hypergraph_partitioner.models.segment import SeamCompute, Segment
 from hypergraph_partitioner.partitioner import _ignore_last_seam, merge_seams, partition_hypergraph
+from hypergraph_partitioner.qiskit_normalization import normalize_to_one_qubit_and_cz
 
 
 def _unwrap_conditional(inst: InstructionType) -> InstructionType:
@@ -149,7 +150,9 @@ def partition_circuit(
     max_hedge_dist: int,
     config_path: str,
 ) -> list[Segment]:
-    instructions = prepare_instructions(circuit.instructions)
+    normalized = _preprocess(circuit)
+    
+    instructions = prepare_instructions(normalized.instructions)
     n_qubits = circuit.qubits()
 
     initial = _initial_segments(
@@ -169,6 +172,13 @@ def partition_circuit(
         return partition_hypergraph(hyp, n_qubits, k, config_path)
 
     return merge_seams(to_hyp, to_part, k, n_qubits, initial)
+
+
+def _preprocess(circuit: Circuit) -> Circuit:
+    # step 1
+    res = normalize_to_one_qubit_and_cz(circuit)
+    # step 2 ...
+    return res
 
 
 def count_nonlocal_interactions(segments: list[Segment]) -> int:
