@@ -28,7 +28,7 @@ cx q[1], q[4];
 config_path = Path(__file__).resolve().parent.parent / "kahypar/config/km1_kKaHyPar_sea20.ini"
 
 circuit = Translator().from_qasm(qasm_text)
-segments = partition_circuit(
+result = partition_circuit(
     circuit,
     k=2,
     init_seg_size=int(os.environ.get("INIT_SEG_SIZE", "1000")),
@@ -36,12 +36,12 @@ segments = partition_circuit(
     config_path=str(config_path),
 )
 
-print(f"res = {segments}")
+print(f"res = {result}")
 
 stats = {
     "interactions": count_interactions(circuit.instructions),
-    "nonlocal": count_nonlocal_interactions(segments),
-    "teleports": count_teleports(segments, circuit.qubits()),
+    "nonlocal": count_nonlocal_interactions(result),
+    "teleports": count_teleports(result),
 }
 
 print(stats)

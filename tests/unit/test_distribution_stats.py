@@ -24,7 +24,7 @@ def test_stats_non_negative_for_cx_circuit() -> None:
         """
     )
 
-    segs = partition_circuit(
+    result = partition_circuit(
         circuit,
         k=2,
         init_seg_size=1000,
@@ -33,8 +33,8 @@ def test_stats_non_negative_for_cx_circuit() -> None:
     )
 
     assert count_interactions(circuit.instructions) >= 2
-    assert count_nonlocal_interactions(segs) >= 0
-    assert count_teleports(segs, circuit.qubits()) >= 0
+    assert count_nonlocal_interactions(result) >= 0
+    assert count_teleports(result) >= 0
 
 
 def test_stats_handle_toffoli() -> None:
@@ -47,7 +47,7 @@ def test_stats_handle_toffoli() -> None:
         """
     )
 
-    segs = partition_circuit(
+    result = partition_circuit(
         circuit,
         k=2,
         init_seg_size=1000,
@@ -56,4 +56,4 @@ def test_stats_handle_toffoli() -> None:
     )
 
     assert count_interactions(circuit.instructions) == 1
-    assert count_nonlocal_interactions(segs) >= 0
+    assert count_nonlocal_interactions(result) >= 0

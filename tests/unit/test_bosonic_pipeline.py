@@ -5,12 +5,14 @@ from __future__ import annotations
 import random
 
 from bosonic_converters import CircuitConverters
+from bosonic_model.instructions import CzInstruction, UInstruction
 from bosonic_model.qasm import Translator
 import pytest
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Operator
 
 from hypergraph_partitioner.bosonic_pipeline import (
+    _annotate_partitioned_circuit,
     _initial_segments,
     build_hypergraph_from_instructions,
     count_interactions,
@@ -20,7 +22,14 @@ from hypergraph_partitioner.bosonic_pipeline import (
 )
 from hypergraph_partitioner.cz_commutation import push_cz_early
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
+from hypergraph_partitioner.models.annotated import (
+    BoundaryTeleportOp,
+    NonlocalCZOp,
+    PartitionedCircuit,
+    SegmentBoundary,
+)
 from hypergraph_partitioner.qiskit_normalization import normalize_to_one_qubit_and_cz
+from hypergraph_partitioner.models.segment import SeamStop, Segment
 
 
 def _assert_normalized_to_one_qubit_and_cz(circuit) -> None:
@@ -96,7 +105,7 @@ def test_partition_circuit_runs_on_small_qasm() -> None:
         """
     )
 
-    segments = partition_circuit(
+    result = partition_circuit(
         circuit,
         k=2,
         init_seg_size=1000,
@@ -104,10 +113,36 @@ def test_partition_circuit_runs_on_small_qasm() -> None:
         config_path=KAHYPAR_CONFIG,
     )
 
-    assert len(segments) >= 1
+    assert isinstance(result, PartitionedCircuit)
+    assert len(result.segments) >= 1
+    assert len(result.boundaries) == max(0, len(result.segments) - 1)
     assert count_interactions(circuit.instructions) >= 2
-    assert count_nonlocal_interactions(segments) >= 0
-    assert count_teleports(segments, circuit.qubits()) >= 0
+    assert count_nonlocal_interactions(result) >= 0
+    assert count_teleports(result) >= 0
+
+
+def test_annotated_circuit_orders_boundary_ops_between_segments() -> None:
+    cz = CzInstruction(control=0, target=1, qubits=[0, 1])
+    u = UInstruction(qubit=0, qubits=[0], theta=0.0, phi=0.0, lam=0.0, params=[0.0, 0.0, 0.0])
+    segments = [
+        Segment(gates=[cz], partition={0: 0, 1: 1}, seam=SeamStop(), wire_range=(0, 0)),
+        Segment(gates=[u], partition={0: 1, 1: 1}, seam=SeamStop(), wire_range=(1, 1)),
+    ]
+
+    result = _annotate_partitioned_circuit(segments)
+
+    assert len(result.segments) == 2
+    assert len(result.boundaries) == 1
+    assert isinstance(result.boundaries[0], SegmentBoundary)
+
+    first_boundary_idx = next(
+        i for i, op in enumerate(result.operations) if isinstance(op, BoundaryTeleportOp)
+    )
+    first_nonlocal_idx = next(
+        i for i, op in enumerate(result.operations) if isinstance(op, NonlocalCZOp)
+    )
+
+    assert first_nonlocal_idx < first_boundary_idx
 
 
 def test_initial_segments_splits_by_interaction_count() -> None:
@@ -313,3 +348,19 @@ def test_preprocess_step2_preserves_unitary_for_random_supported_circuits(
     preprocessed_op = Operator(CircuitConverters.to_qiskit(step1_only.model_copy(update={"instructions": preprocessed})))
 
     assert preprocessed_op.equiv(step1_op)
+
+
+def test_annotated_circuit_marks_nonlocal_czs_and_boundary_teleports() -> None:
+    cz = CzInstruction(control=0, target=1, qubits=[0, 1])
+    u = UInstruction(qubit=0, qubits=[0], theta=0.0, phi=0.0, lam=0.0, params=[0.0, 0.0, 0.0])
+    segments = [
+        Segment(gates=[cz], partition={0: 0, 1: 1}, seam=SeamStop(), wire_range=(0, 0)),
+        Segment(gates=[u], partition={0: 1, 1: 1}, seam=SeamStop(), wire_range=(1, 1)),
+    ]
+
+    result = _annotate_partitioned_circuit(segments)
+
+    assert count_nonlocal_interactions(result) == 1
+    assert count_teleports(result) == 1
+    assert any(isinstance(op, NonlocalCZOp) for op in result.operations)
+    assert any(isinstance(op, BoundaryTeleportOp) for op in result.operations)

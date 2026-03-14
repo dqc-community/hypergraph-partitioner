@@ -17,7 +17,7 @@ from hypergraph_partitioner.config import KAHYPAR_CONFIG
 def _run_pipeline(qasm_text: str, k: int, init_seg_size: int = 1000) -> tuple[int, int, int]:
     circuit = Translator().from_qasm(qasm_text)
 
-    segments = partition_circuit(
+    result = partition_circuit(
         circuit,
         k=k,
         init_seg_size=init_seg_size,
@@ -26,8 +26,8 @@ def _run_pipeline(qasm_text: str, k: int, init_seg_size: int = 1000) -> tuple[in
     )
 
     interaction_count = count_interactions(circuit.instructions)
-    nonlocal_count = count_nonlocal_interactions(segments)
-    teleports = count_teleports(segments, circuit.qubits())
+    nonlocal_count = count_nonlocal_interactions(result)
+    teleports = count_teleports(result)
     return interaction_count, nonlocal_count, teleports
 
 
