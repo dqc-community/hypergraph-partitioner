@@ -1,178 +1,302 @@
 # hypergraph-partitioner
 
-`hypergraph-partitioner` is the Python hypergraph partitioning pipeline extracted and modernized from the original Haskell `Distributed` project.
+`hypergraph-partitioner` partitions quantum circuits into segments, partitions each segment across `k` blocks with KaHyPar, and returns an annotated intermediate representation that marks:
 
-This document focuses on one thing: **what functionality is currently equivalent vs. not yet equivalent** to the Haskell implementation, and exactly what remains to implement for parity.
+- local operations,
+- nonlocal `CZ` gates inside segments (`telegate`-style annotations),
+- qubit moves across segment boundaries (`teledata`-style annotations).
 
-## Scope and Current Role
+The repo is a Python modernization of the partitioning logic from the original Haskell `Distributed` project, adapted to work with `bosonic_model` circuits and a Qiskit-based preprocessing pipeline.
 
-The package currently provides:
+## What the Repo Does
 
-- parsing-independent partitioning over `bosonic_model.Circuit` instructions,
-- hypergraph construction from instruction interactions,
-- segment partitioning with KaHyPar,
-- seam merge heuristics,
-- summary metrics:
-  - interaction count,
-  - nonlocal interaction count,
-  - teleport count (as partition-boundary wire moves).
+The main entrypoint is `partition_circuit(...)`.
 
-It intentionally does **not** yet emit a full distributed execution circuit with explicit teleportation / ebit protocol operations.
+Given a `bosonic_model.Circuit`, it:
 
-## Relationship to Original Haskell `Distributed`
+1. normalizes the circuit to one-qubit gates plus `CZ`,
+2. pushes `CZ` gates earlier where legal,
+3. builds a hypergraph from multi-qubit interactions,
+4. partitions initial segments with KaHyPar,
+5. merges adjacent segments using seam heuristics and `max_hedge_dist`,
+6. returns a `PartitionedCircuit` with explicit annotations.
 
-The original Haskell project performs both:
+The public output is an annotated IR, not a fully lowered distributed circuit.
 
-1. partitioning logic, and
-2. explicit distributed-circuit synthesis (including ebit lifecycle and teleport-style protocol steps).
+## Current Output Model
 
-This Python repo currently implements (1) strongly, and implements only the analytical subset of (2).
+The public API returns a [`PartitionedCircuit`](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/models/annotated.py) containing:
 
-## Feature-by-Feature Comparison
+- `segments`
+- `boundaries`
+- `operations`
 
-### 1) Input model
+The `operations` stream contains:
 
-- Haskell `Distributed`: Quipper ASCII / Quipper-native circuit representation.
-- `hypergraph-partitioner`: `bosonic_model` instruction stream (usually from OpenQASM 2 parser).
+- `LocalOp`
+- `NonlocalCZOp`
+- `BoundaryTeleportOp`
 
-Status: **Not identical by design** (modernized input path).
+This means the repo currently answers:
 
-### 2) Gate preparation / normalization
+- which operations stay local,
+- which `CZ`s are remote inside a segment,
+- which wires need to move between segments.
 
-- Haskell: preprocessing includes Quipper-specific gate normalization and control handling assumptions.
-- Python: `prepare_instructions` currently removes barriers and preserves order.
+It does not yet lower those annotations into a concrete distributed execution circuit in production code.
 
-Status: **Partial parity**.
+## What Is Implemented
 
-Impact: some semantics from Quipper preprocessing are not represented yet as explicit prep passes.
+- `bosonic_model` circuit support
+- OpenQASM 2 input via `bosonic_model.qasm.Translator`
+- Qiskit-based normalization to one-qubit gates plus `CZ`
+- `CZ` commutation / early-push preprocessing
+- explicit hypergraph model with `WireVertex` and `InteractionVertex`
+- KaHyPar partitioning
+- initial segmentation
+- seam merge heuristics
+- restored `max_hedge_dist` influence on segmentation
+- annotated output for telegate / teledata
+- end-to-end tests for multi-segment behavior
+- Aer-verified protocol tests for candidate telegate and teledata lowerings
 
-### 3) Hypergraph construction
+## What Is Not Implemented Yet
 
-- Haskell: builds hypergraph from interaction structure with hedge handling.
-- Python: equivalent conceptual flow in `build_hypergraph_from_instructions`, including long-hedge splitting.
+The repo does not yet provide a production lowering pass such as:
 
-Status: **High parity** for interaction-driven partitioning.
+- `lower_partitioned_circuit(...)`
 
-### 4) Segmentation + seam merge
+There is currently no production code that turns:
 
-- Haskell: initial segmentation plus seam merge to reduce teleport/cut cost over time.
-- Python: same high-level strategy (`_initial_segments`, `merge_seams`, partition recomputation).
+- `NonlocalCZOp`
+- `BoundaryTeleportOp`
 
-Status: **High parity**.
+into explicit protocol operations such as:
 
-### 5) Teleport accounting across segments
+- Bell-pair preparation,
+- measurement and reset,
+- classically controlled corrections,
+- logical wire relocation.
 
-- Haskell: uses partition changes between adjacent segments and integrates this into distributed build decisions.
-- Python: `count_teleports` computes this metric explicitly.
+That logic is currently explored and validated in tests, not exposed as library functionality.
 
-Status: **Metric parity only**.
+## Lowering
 
-### 6) Nonlocal gate realization (core gap)
+This repo does not yet expose a production `lower_partitioned_circuit(...)` API, but it does contain Aer-verified candidate lowering patterns for the two important annotation types:
 
-- Haskell: explicit transformation from nonlocal interactions into protocol operations (ebit allocation, bell/entangler-disentangler components, measurements, classically-controlled corrections, cleanup).
-- Python: does not emit those protocol operations in this repo.
+- `telegate`: remote `CZ` inside a segment
+- `teledata`: qubit state teleportation across a segment boundary
 
-Status: **Major gap**.
+Those candidate lowerings live in [test_telegate_teledata.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata.py).
 
-### 7) Segment-boundary state movement (core gap)
+Both are validated against ideal circuits with Aer density-matrix simulation:
 
-- Haskell: inserts explicit `teleport` gate operations when a wire changes assigned block between consecutive segments.
-- Python: currently only counts these transitions; no emitted operations.
+- telegate checks that the reduced logical two-qubit state matches ideal `CZ`
+- teledata checks that the destination qubit ends in the same state as the original source qubit
 
-Status: **Major gap**.
+The tests also render `mpl` diagrams to `.pytest_artifacts/`.
 
-### 8) Output artifact type
+Generate the diagrams locally with:
 
-- Haskell: emits transformed distributed gate stream with protocol structure.
-- Python: returns `list[Segment]` + stats.
+```bash
+uv run pytest tests/unit/test_telegate_teledata.py -q
+```
 
-Status: **Different output level**.
+### Telegate Lowering
 
-## What This Means in Practice
+Candidate remote-`CZ` lowering:
 
-Today, this repo is best described as:
+- Bell-pair primitive
+- local `u` / `rzz` gates
+- measurement + reset
+- LOCC corrections
 
-- a **mature partitioning/statistics engine**,
-- not yet a full **distributed-circuit synthesis engine**.
+Diagram:
 
-If your goal is parity with Haskell `Distributed`, the remaining work is not in KaHyPar/seam quality but in **lowering semantics** (what gets emitted for nonlocal work and inter-segment movement).
+![Telegate lowering](.pytest_artifacts/remote_cz_protocol.png)
 
-## Concrete Parity Roadmap
+### Teledata Lowering
 
-### Phase 1: Introduce explicit protocol IR in Python
+Candidate state-teleportation lowering:
 
-Add Python-side representation for distributed protocol primitives, for example:
+- Bell-pair primitive
+- Bell-basis interaction on the source side
+- measurement + reset
+- LOCC corrections on the destination side
 
-- `EbitAllocate`, `EbitFree`,
-- `BellPrepare` (or explicit H + CX pair),
-- `Teleport` (state move),
-- `ClassicalMeasure`, `ClassicalCondition`,
-- remote correction ops (`X_if`, `Z_if`).
+Diagram:
 
-Goal: stop representing nonlocal behavior as counts/placeholders only.
+![Teledata lowering](.pytest_artifacts/teledata_protocol.png)
 
-### Phase 2: Recreate Haskell `DCircBuilder` semantics
+## Installation
 
-Port the logic analogous to:
+This repo is set up to work with `uv`.
 
-- nonlocal connection extraction,
-- ebit component scheduling (entangler/disentangler ordering),
-- nonlocal interaction rewrites onto ebit wires,
-- allocation/cleanup insertion ordering constraints.
+From the repo root:
 
-Goal: protocol-level output isomorphic to Haskell flow.
+```bash
+uv sync --extra dev
+```
 
-### Phase 3: Emit segment-boundary teleports
+This installs:
 
-Given adjacent segment partitions:
+- the package itself,
+- dev dependencies such as `pytest`,
+- local path dependencies declared in `pyproject.toml`:
+  - `bosonic-model`
+  - `bosonic-converters`
 
-- detect wires whose block assignment changes,
-- insert explicit state-transfer operations at boundaries,
-- preserve deterministic order and wire/resource bookkeeping.
+Notes:
 
-Goal: convert `count_teleports` from metric into concrete circuit ops.
+- KaHyPar is required for the partitioning pipeline.
+- The repo currently expects the local sibling `dqcomp` checkout because of the path-based dependencies in `pyproject.toml`.
 
-### Phase 4: End-to-end validation against Haskell behavior
+## Running Tests
 
-For shared benchmark circuits:
+Run the full test suite:
 
-- compare nonlocal counts,
-- compare ebit allocations and teleport counts,
-- compare emitted protocol structure (up to representation-normalization).
+```bash
+make test
+```
 
-Goal: parity confidence, not only unit-level correctness.
+Equivalent command:
 
-### Phase 5: Integration target choice
+```bash
+uv run --extra dev python -m pytest -q
+```
 
-Decide one of:
+Run one focused test file:
 
-- keep protocol IR in `hypergraph-partitioner` and lower later in consumer repo, or
-- emit `bosonic_model`-compatible distributed instructions directly.
+```bash
+uv run pytest tests/unit/test_telegate_teledata.py -q
+```
 
-Recommendation: keep protocol IR here first, then add deterministic lowering adapters.
+Run one integration test file:
 
-## Current Known Intentional Limitations
+```bash
+uv run pytest tests/integration/test_max_hedge_dist_regression.py -q
+```
 
-- No explicit teleport/ebit operation emission in this repo.
-- No full reproduction of Quipper-specific preprocessing semantics.
-- Consumer integrations may force single-segment execution, bypassing segment-boundary movement semantics.
+## Running Examples
 
-## Suggested Success Criteria for “Parity Achieved”
+Run all example scripts:
 
-Declare parity complete when all are true:
+```bash
+make run
+```
 
-- For representative benchmark set, Python and Haskell agree on:
-  - segment boundaries (or equivalent cost tradeoff),
-  - nonlocal interaction handling decisions,
-  - teleport/ebit totals.
-- Python emits explicit distributed protocol operations equivalent to Haskell behavior.
-- Removal of placeholder-only remote semantics is possible without losing functionality.
+This executes every `examples/*.py` file.
 
-## Where to Look in Haskell Source
+Run a single example directly:
 
-If you are implementing parity, these files are the key references in the original repo:
+```bash
+uv run python examples/basic_partition_stats.py
+```
 
-- `DCircBuilder.hs` (distributed circuit building, ebit components, teleport insertion),
-- `Partitioner.hs` (segment merge and teleport cost-driven decisions),
-- `Preparation.hs` (preprocessing assumptions that influence hypergraph construction).
+Useful examples:
 
+- `examples/basic_partition_stats.py`
+  - minimal library usage
+- `examples/contrived_two_phase_four_qubit_segments.py`
+  - deterministic multi-segment example with visible seam/merge behavior
+- `examples/search_two_segment_circuit.py`
+  - deterministic search for circuits that survive as multiple final segments
+
+Example with extra search budget:
+
+```bash
+uv run python examples/search_two_segment_circuit.py --max-candidates 1000
+```
+
+## Minimal Usage
+
+```python
+from bosonic_model.qasm import Translator
+
+from hypergraph_partitioner import (
+    count_interactions,
+    count_nonlocal_interactions,
+    count_teleports,
+    partition_circuit,
+)
+from hypergraph_partitioner.config import KAHYPAR_CONFIG
+
+qasm_text = """
+OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[4];
+cz q[0], q[1];
+cz q[2], q[3];
+cz q[0], q[3];
+"""
+
+circuit = Translator().from_qasm(qasm_text)
+
+result = partition_circuit(
+    circuit,
+    k=2,
+    init_seg_size=10,
+    max_hedge_dist=100,
+    config_path=KAHYPAR_CONFIG,
+)
+
+print(result)
+print(count_interactions(circuit.instructions))
+print(count_nonlocal_interactions(result))
+print(count_teleports(result))
+```
+
+## Public API
+
+The package exports:
+
+- `partition_circuit`
+- `count_interactions`
+- `count_nonlocal_interactions`
+- `count_teleports`
+- `PartitionedCircuit`
+- `PartitionedSegment`
+- `SegmentBoundary`
+- `TeleportBoundary`
+- `AnnotatedOp`
+- `LocalOp`
+- `NonlocalCZOp`
+- `BoundaryTeleportOp`
+
+See [__init__.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/__init__.py).
+
+## Important Notes
+
+- `partition_circuit(...)` currently returns annotations, not a lowered distributed circuit.
+- `max_hedge_dist` affects seam scoring / segmentation behavior, not the KaHyPar netlist directly.
+- The test file [test_telegate_teledata.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata.py) contains Aer-verified candidate protocol lowerings for:
+  - remote `CZ` (`telegate`)
+  - qubit state teleportation (`teledata`)
+- The generated protocol diagrams are written to `.pytest_artifacts/` during those tests.
+
+## Repo Layout
+
+Key files:
+
+- [src/hypergraph_partitioner/bosonic_pipeline.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/bosonic_pipeline.py)
+  - main pipeline and annotation logic
+- [src/hypergraph_partitioner/partitioner.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/partitioner.py)
+  - segmentation, seam scoring, and merge logic
+- [src/hypergraph_partitioner/hgraph_builder.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/hgraph_builder.py)
+  - cut counting and KaHyPar conversion helpers
+- [src/hypergraph_partitioner/models/hypergraph.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/models/hypergraph.py)
+  - explicit hypergraph data model
+- [src/hypergraph_partitioner/models/annotated.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/models/annotated.py)
+  - public annotated IR
+- [tests/unit/test_telegate_teledata.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata.py)
+  - Aer-verified telegate / teledata protocol tests
+
+## Current Status
+
+This repo is currently best thought of as:
+
+- a partitioning engine,
+- an annotation engine for remote work,
+- and a place where candidate lowering semantics are being validated.
+
+It is not yet a full distributed-circuit synthesis library in production code.
