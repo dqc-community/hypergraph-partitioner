@@ -18,6 +18,8 @@ from bosonic_model import (
 )
 import pytest
 from qiskit_aer import AerSimulator
+from qiskit.circuit import QuantumCircuit
+from qiskit.circuit.library import UnitaryGate
 from qiskit.quantum_info import DensityMatrix, partial_trace, state_fidelity
 
 
@@ -50,6 +52,16 @@ def _prepare_state_dsl(instructions: list, qubit: int, label: str) -> None:
 _INPUT_STATES = ("0", "1", "+", "+i")
 
 
+def _bell_pair_phi_plus_matrix() -> list[list[complex]]:
+    scale = 1 / (2**0.5)
+    return [
+        [1 * scale, 0, 1 * scale, 0],
+        [0, 1 * scale, 0, 1 * scale],
+        [0, 1 * scale, 0, -1 * scale],
+        [1 * scale, 0, -1 * scale, 0],
+    ]
+
+
 def _build_remote_cz_protocol_dsl(input_control: str, input_target: str) -> Circuit:
     qregs, cregs = _registers(n_qubits=4, classical=(("c_start", 1), ("c_end", 1)))
     instructions: list = []
@@ -66,7 +78,7 @@ def _build_remote_cz_protocol_dsl(input_control: str, input_target: str) -> Circ
 
     instructions.append(
         GateInstruction(
-            name="remote_link_psi_plus",
+            name="bell_pair_phi_plus",
             qubits=[comm_ctrl, comm_tgt],
             params=[],
             opaque=True,
@@ -103,6 +115,22 @@ def _build_remote_cz_protocol_dsl(input_control: str, input_target: str) -> Circ
     return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
 
 
+def _build_ideal_remote_cz_dsl(input_control: str, input_target: str) -> Circuit:
+    qregs, cregs = _registers(n_qubits=4, classical=())
+    instructions: list = []
+    _prepare_state_dsl(instructions, 0, input_control)
+    _prepare_state_dsl(instructions, 3, input_target)
+    instructions.append(
+        GateInstruction(
+            name="cz",
+            qubits=[0, 3],
+            params=[],
+            opaque=True,
+        )
+    )
+    return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
+
+
 def _build_teledata_protocol_dsl(input_state: str) -> Circuit:
     qregs, cregs = _registers(n_qubits=3, classical=(("c_data", 1), ("c_comm", 1)))
     instructions: list = []
@@ -116,7 +144,7 @@ def _build_teledata_protocol_dsl(input_state: str) -> Circuit:
     _prepare_state_dsl(instructions, data_src, input_state)
     instructions.append(
         GateInstruction(
-            name="remote_link_psi_plus",
+            name="bell_pair_phi_plus",
             qubits=[comm_src, comm_dst],
             params=[],
             opaque=True,
@@ -156,11 +184,62 @@ def _build_ideal_teledata_dsl(input_state: str) -> Circuit:
     return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
 
 
+def _aer_compatible_qiskit(circuit: QuantumCircuit) -> QuantumCircuit:
+    rewritten = QuantumCircuit(*circuit.qregs, *circuit.cregs)
+    for inst in circuit.data:
+        op = inst.operation
+        if op.name == "bell_pair_phi_plus":
+            rewritten.append(
+                UnitaryGate(_bell_pair_phi_plus_matrix(), label=op.name),
+                inst.qubits,
+                inst.clbits,
+            )
+            continue
+        if op.name in {"remote_link_psi_minus", "remote_link_psi_plus"}:
+            rewritten.append(
+                UnitaryGate(op.to_matrix(), label=op.name),
+                inst.qubits,
+                inst.clbits,
+            )
+            continue
+        rewritten.append(op, inst.qubits, inst.clbits)
+    return rewritten
+
+
 def test_remote_cz_protocol_dsl_converts_to_qiskit() -> None:
     circuit = _build_remote_cz_protocol_dsl("0", "0")
     qiskit_circuit = CircuitConverters.to_qiskit(circuit)
     assert qiskit_circuit.num_qubits == 4
     assert qiskit_circuit.num_clbits == 2
+
+
+@pytest.mark.parametrize("input_control", _INPUT_STATES)
+@pytest.mark.parametrize("input_target", _INPUT_STATES)
+def test_cat_entangler_remote_cz_matches_ideal_cz_via_dsl(
+    input_control: str, input_target: str
+) -> None:
+    simulator = AerSimulator(method="density_matrix")
+
+    remote_qiskit = _aer_compatible_qiskit(
+        CircuitConverters.to_qiskit(_build_remote_cz_protocol_dsl(input_control, input_target))
+    )
+    ideal_qiskit = _aer_compatible_qiskit(
+        CircuitConverters.to_qiskit(_build_ideal_remote_cz_dsl(input_control, input_target))
+    )
+
+    remote_qiskit.save_density_matrix()
+    ideal_qiskit.save_density_matrix()
+
+    remote_result = simulator.run(remote_qiskit).result()
+    ideal_result = simulator.run(ideal_qiskit).result()
+
+    remote_density = DensityMatrix(remote_result.data(0)["density_matrix"])
+    ideal_density = DensityMatrix(ideal_result.data(0)["density_matrix"])
+
+    reduced_remote = partial_trace(remote_density, [1, 2])
+    reduced_ideal = partial_trace(ideal_density, [1, 2])
+
+    assert state_fidelity(reduced_remote, reduced_ideal) == pytest.approx(1.0, abs=1e-9)
 
 
 def test_teledata_protocol_dsl_converts_to_qiskit() -> None:
@@ -174,8 +253,12 @@ def test_teledata_protocol_dsl_converts_to_qiskit() -> None:
 def test_teledata_state_transfer_matches_ideal_destination_state_via_dsl(input_state: str) -> None:
     simulator = AerSimulator(method="density_matrix")
 
-    remote_qiskit = CircuitConverters.to_qiskit(_build_teledata_protocol_dsl(input_state))
-    ideal_qiskit = CircuitConverters.to_qiskit(_build_ideal_teledata_dsl(input_state))
+    remote_qiskit = _aer_compatible_qiskit(
+        CircuitConverters.to_qiskit(_build_teledata_protocol_dsl(input_state))
+    )
+    ideal_qiskit = _aer_compatible_qiskit(
+        CircuitConverters.to_qiskit(_build_ideal_teledata_dsl(input_state))
+    )
 
     remote_qiskit.save_density_matrix()
     ideal_qiskit.save_density_matrix()
