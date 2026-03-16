@@ -248,8 +248,8 @@ def test_count_cuts_counts_cross_block_hyperedges() -> None:
     seg = Segment(
         gates=[],
         hypergraph={
-            0: [Hedge(nan=0, wires=[(1, 0)], out_pos=1)],
-            1: [Hedge(nan=0, wires=[(0, 0)], out_pos=1)],
+            0: [Hedge(nan=0, wires=[(-1, 0), (-2, 1)], out_pos=2)],
+            1: [Hedge(nan=0, wires=[(-1, 0), (-2, 1)], out_pos=2)],
         },
         partition={0: 0, 1: 1},
         seam=SeamCompute(),

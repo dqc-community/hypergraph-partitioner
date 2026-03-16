@@ -33,14 +33,23 @@ def _split_long_hedges(hedges: list[Hedge], max_dist: int) -> list[Hedge]:
     return result
 
 
+def build_interaction_to_wires(hyp: Hypergraph) -> dict[int, set[int]]:
+    """Record which real wires participate in each interaction vertex."""
+    interaction_to_wires: dict[int, set[int]] = {}
+    for wire, hedges in hyp.items():
+        for hedge in hedges:
+            for interaction_id, _ in hedge.wires:
+                interaction_to_wires.setdefault(interaction_id, set()).add(wire)
+    return interaction_to_wires
+
+
 def count_cuts(segment: Segment) -> int:
     """Count the number of hyperedge cuts in a segment."""
     total = 0
-    for wire, hedges in segment.hypergraph.items():
-        for hedge in hedges:
-            vertex_set = [wire] + [w for w, _ in hedge.wires]
-            blocks = {segment.partition[w] for w in vertex_set if w in segment.partition}
-            total += max(0, len(blocks) - 1)
+    interaction_to_wires = build_interaction_to_wires(segment.hypergraph)
+    for wires in interaction_to_wires.values():
+        blocks = {segment.partition[w] for w in wires if w in segment.partition}
+        total += max(0, len(blocks) - 1)
     return total
 
 

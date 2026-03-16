@@ -5,7 +5,12 @@ from __future__ import annotations
 from bosonic_model.qasm import Translator
 
 from hypergraph_partitioner.bosonic_pipeline import build_hypergraph_from_instructions
-from hypergraph_partitioner.hgraph_builder import _split_long_hedges, count_cuts, hypergraph_to_kahypar
+from hypergraph_partitioner.hgraph_builder import (
+    _split_long_hedges,
+    build_interaction_to_wires,
+    count_cuts,
+    hypergraph_to_kahypar,
+)
 from hypergraph_partitioner.models.hypergraph import Hedge
 from hypergraph_partitioner.models.segment import SeamStop, Segment
 
@@ -51,9 +56,23 @@ def test_count_cuts_detects_cut() -> None:
         """
     )
     hyp = build_hypergraph_from_instructions(circuit.instructions, n_qubits=2, max_hedge_dist=100)
-    seg = Segment(gates=circuit.instructions, hypergraph=hyp, partition={0: 0, 1: 1, -1: 0}, seam=SeamStop())
+    seg = Segment(
+        gates=circuit.instructions,
+        hypergraph=hyp,
+        partition={0: 0, 1: 1},
+        seam=SeamStop(),
+    )
 
     assert count_cuts(seg) >= 1
+
+
+def test_build_interaction_to_wires_tracks_incident_real_wires() -> None:
+    hyp = {
+        0: [Hedge(nan=0, wires=[(-1, 0)], out_pos=1)],
+        1: [Hedge(nan=0, wires=[(-1, 0)], out_pos=1)],
+    }
+
+    assert build_interaction_to_wires(hyp) == {-1: {0, 1}}
 
 
 def test_hypergraph_to_kahypar_reconstructs_interaction_nets() -> None:

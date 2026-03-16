@@ -278,9 +278,9 @@ def merge_min(to_hyp: ToHyp, to_part: ToPart, n_wires: int, segments: list[Segme
                 seam=SeamStop(),
                 wire_range=s.wire_range,
             )
-            for s in valley
+            for s in before_valley + valley
         ]
-        return before_valley + marked + merge_min(to_hyp, to_part, n_wires, after_valley)
+        return marked + merge_min(to_hyp, to_part, n_wires, after_valley)
 
     left_seg, right_seg = valley[0], valley[1]
     merged_gates = left_seg.gates + right_seg.gates
@@ -299,8 +299,9 @@ def merge_min(to_hyp: ToHyp, to_part: ToPart, n_wires: int, segments: list[Segme
     cuts_right = count_cuts(right_seg)
     teles = count_teles(left_seg.partition, right_seg.partition, n_wires)
     cuts_merged = count_cuts(merged_seg)
+    separate_cost = cuts_left + cuts_right + teles
 
-    if cuts_left + cuts_right + teles < cuts_merged:
+    if separate_cost < cuts_merged:
         marked = [
             Segment(
                 gates=s.gates,
@@ -309,16 +310,17 @@ def merge_min(to_hyp: ToHyp, to_part: ToPart, n_wires: int, segments: list[Segme
                 seam=SeamStop(),
                 wire_range=s.wire_range,
             )
-            for s in valley
+            for s in before_valley + valley
         ]
-        return before_valley + marked + merge_min(to_hyp, to_part, n_wires, after_valley)
+        return marked + merge_min(to_hyp, to_part, n_wires, after_valley)
 
     remaining_valley = valley[2:]
-    return before_valley + merge_min(
+    segments_after_valley = remaining_valley + after_valley
+    return before_valley + [merged_seg] + merge_min(
         to_hyp,
         to_part,
         n_wires,
-        [merged_seg] + remaining_valley + after_valley,
+        segments_after_valley,
     )
 
 
