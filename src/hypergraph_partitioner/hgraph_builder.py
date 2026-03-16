@@ -2,68 +2,29 @@
 
 from __future__ import annotations
 
-from hypergraph_partitioner.models.hypergraph import Hedge, Hypergraph
+from hypergraph_partitioner.models.hypergraph import Hypergraph
 from hypergraph_partitioner.models.segment import Segment
-
-
-def _split_long_hedges(hedges: list[Hedge], max_dist: int) -> list[Hedge]:
-    """Recursively split hedges whose span exceeds ``max_dist``."""
-    if not hedges:
-        return []
-
-    result: list[Hedge] = []
-    queue = list(hedges)
-
-    while queue:
-        hedge = queue.pop(0)
-        if max_dist == 1:
-            for w, p in hedge.wires:
-                result.append(Hedge(nan=p, wires=[(w, p)], out_pos=p + 1))
-        elif max_dist < (hedge.out_pos - hedge.nan) and len(hedge.wires) > 1:
-            split = hedge.nan + (hedge.out_pos - hedge.nan) // 2
-            before = [(w, p) for w, p in hedge.wires if p < split]
-            after = [(w, p) for w, p in hedge.wires if p >= split]
-            left = Hedge(nan=hedge.nan, wires=before, out_pos=split)
-            right = Hedge(nan=split, wires=after, out_pos=hedge.out_pos)
-            queue.insert(0, right)
-            queue.insert(0, left)
-        else:
-            result.append(hedge)
-
-    return result
 
 
 def build_interaction_to_wires(hyp: Hypergraph) -> dict[int, set[int]]:
     """Record which real wires participate in each interaction vertex."""
-    interaction_to_wires: dict[int, set[int]] = {}
-    for wire, hedges in hyp.items():
-        for hedge in hedges:
-            for interaction_id, _ in hedge.wires:
-                interaction_to_wires.setdefault(interaction_id, set()).add(wire)
-    return interaction_to_wires
+    return {interaction_id: set(interaction.qubits) for interaction_id, interaction in hyp.interactions.items()}
 
 
 def count_cuts(segment: Segment) -> int:
     """Count the number of hyperedge cuts in a segment."""
     total = 0
-    interaction_to_wires = build_interaction_to_wires(segment.hypergraph)
-    for wires in interaction_to_wires.values():
-        blocks = {segment.partition[w] for w in wires if w in segment.partition}
+    for interaction in segment.hypergraph.interactions.values():
+        blocks = {segment.partition[w] for w in interaction.qubits if w in segment.partition}
         total += max(0, len(blocks) - 1)
     return total
 
 
 def hypergraph_to_kahypar(hyp: Hypergraph, n_qubits: int) -> tuple[list[int], list[int], list[int]]:
     """Convert hypergraph to CSR format for the kahypar Python API."""
-    interaction_to_qubits: dict[int, set[int]] = {}
-    for wire, hedges in hyp.items():
-        for hedge in hedges:
-            for interaction_id, _ in hedge.wires:
-                interaction_to_qubits.setdefault(interaction_id, set()).add(wire)
-
     flat_data: list[list[int]] = []
-    for interaction_id in sorted(interaction_to_qubits):
-        vertices = sorted(v for v in interaction_to_qubits[interaction_id] if 0 <= v < n_qubits)
+    for interaction in sorted(hyp.interactions.values(), key=lambda interaction: interaction.position):
+        vertices = sorted(v for v in interaction.qubits if 0 <= v < n_qubits)
         if len(vertices) >= 2:
             flat_data.append(vertices)
 

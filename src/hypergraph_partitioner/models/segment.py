@@ -7,7 +7,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 
-from hypergraph_partitioner.models.hypergraph import Hedge, Wire
+from hypergraph_partitioner.models.hypergraph import Hypergraph, Wire
 
 
 class SeamCompute(BaseModel):
@@ -34,7 +34,7 @@ Seam = Annotated[
 class Segment(BaseModel):
     # Instruction payloads for this segment (bosonic_model instructions).
     gates: list[object] = Field(default_factory=list)
-    hypergraph: dict[Wire, list[Hedge]] = Field(default_factory=dict)
+    hypergraph: Hypergraph = Field(default_factory=lambda: Hypergraph(wires={}, interactions={}))
     partition: dict[Wire, int] = Field(default_factory=dict)
     seam: Seam = Field(default_factory=SeamCompute)
     wire_range: tuple[int, int] = (0, 0)

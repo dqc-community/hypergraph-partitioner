@@ -5,47 +5,62 @@ from __future__ import annotations
 from fractions import Fraction
 
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
-from hypergraph_partitioner.models.hypergraph import Hedge
-from hypergraph_partitioner.models.segment import SeamCompute, SeamStop, SeamValue, Segment
 from hypergraph_partitioner.hgraph_builder import count_cuts
+from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, WireVertex
+from hypergraph_partitioner.models.segment import SeamCompute, SeamStop, SeamValue, Segment
 from hypergraph_partitioner.partitioner import (
-    _ignore_last_seam,
     _find_valley_rec,
     _heuristic_cost,
+    _ignore_last_seam,
     _match_partitions_search,
     _upd_with,
     compute_new_seams,
     count_teles,
     find_valley,
     get_rho,
-    match_segments,
     match_partitions,
+    match_segments,
     merge_min,
     merge_seams,
     partition_hypergraph,
 )
 
 
-def _seg(partition: dict[int, int], seam=SeamCompute()) -> Segment:
-    hyp = {0: [Hedge(nan=0, wires=[(1, 0)], out_pos=1)], 1: [Hedge(nan=0, wires=[(0, 0)], out_pos=1)]}
+def _hyp(*interactions: tuple[int, int, tuple[int, ...]], wires: tuple[int, ...] = (0, 1)) -> Hypergraph:
+    return Hypergraph(
+        wires={wire_id: WireVertex(wire_id) for wire_id in wires},
+        interactions={
+            interaction_id: InteractionVertex(
+                interaction_id=interaction_id,
+                position=position,
+                qubits=qubits,
+            )
+            for interaction_id, position, qubits in interactions
+        },
+    )
+
+
+def _seg(partition: dict[int, int], seam: SeamCompute | SeamStop | SeamValue = SeamCompute()) -> Segment:
+    hyp = _hyp((0, 0, (0, 1)))
     return Segment(gates=[], hypergraph=hyp, partition=partition, seam=seam, wire_range=(0, 0))
 
 
-def _seg_with_hyp(partition: dict[int, int], hyp: dict[int, list[Hedge]], seam=SeamCompute()) -> Segment:
+def _seg_with_hyp(
+    partition: dict[int, int],
+    hyp: Hypergraph,
+    seam: SeamCompute | SeamStop | SeamValue = SeamCompute(),
+) -> Segment:
     return Segment(gates=[], hypergraph=hyp, partition=partition, seam=seam, wire_range=(0, 0))
 
 
 def test_partition_hypergraph_empty_hypergraph_returns_single_block() -> None:
-    part = partition_hypergraph({}, n_qubits=3, k=2, config_path=KAHYPAR_CONFIG)
+    part = partition_hypergraph(Hypergraph(wires={}, interactions={}), n_qubits=3, k=2, config_path=KAHYPAR_CONFIG)
 
     assert part == {0: 0, 1: 0, 2: 0}
 
 
 def test_partition_hypergraph_returns_assignment_for_nonempty_hypergraph() -> None:
-    hyp = {
-        0: [Hedge(nan=0, wires=[(1, 0)], out_pos=1)],
-        1: [Hedge(nan=0, wires=[(0, 0)], out_pos=1)],
-    }
+    hyp = _hyp((0, 0, (0, 1)))
 
     part = partition_hypergraph(hyp, n_qubits=2, k=2, config_path=KAHYPAR_CONFIG)
 
@@ -92,17 +107,8 @@ def test_get_rho_is_zero_when_no_wires_change_blocks() -> None:
 
 
 def test_get_rho_uses_smaller_of_adjacent_wire_weights() -> None:
-    hyp1 = {
-        0: [Hedge(nan=0, wires=[(1, 0)], out_pos=1)],
-        1: [Hedge(nan=0, wires=[(0, 0)], out_pos=1)],
-    }
-    hyp2 = {
-        0: [
-            Hedge(nan=0, wires=[(1, 0)], out_pos=1),
-            Hedge(nan=1, wires=[(1, 1)], out_pos=2),
-        ],
-        1: [Hedge(nan=0, wires=[(0, 0)], out_pos=1)],
-    }
+    hyp1 = _hyp((0, 0, (0, 1)))
+    hyp2 = _hyp((0, 0, (0, 1)), (1, 1, (0,)))
     seg1 = _seg_with_hyp({0: 0, 1: 1}, hyp1)
     seg2 = _seg_with_hyp({0: 1, 1: 1}, hyp2)
 
@@ -112,14 +118,8 @@ def test_get_rho_uses_smaller_of_adjacent_wire_weights() -> None:
 
 
 def test_get_rho_sums_weights_for_multiple_changing_wires() -> None:
-    hyp1 = {
-        0: [Hedge(nan=0, wires=[(10, 0)], out_pos=1)],
-        1: [Hedge(nan=0, wires=[(11, 0)], out_pos=1), Hedge(nan=1, wires=[(12, 1)], out_pos=2)],
-    }
-    hyp2 = {
-        0: [Hedge(nan=0, wires=[(10, 0)], out_pos=1), Hedge(nan=1, wires=[(13, 1)], out_pos=2)],
-        1: [Hedge(nan=0, wires=[(11, 0)], out_pos=1), Hedge(nan=1, wires=[(12, 1)], out_pos=2)],
-    }
+    hyp1 = _hyp((10, 0, (0,)), (11, 0, (1,)), (12, 1, (1,)))
+    hyp2 = _hyp((10, 0, (0,)), (13, 1, (0,)), (11, 0, (1,)), (12, 1, (1,)))
     seg1 = _seg_with_hyp({0: 0, 1: 0}, hyp1)
     seg2 = _seg_with_hyp({0: 1, 1: 1}, hyp2)
 
@@ -247,10 +247,7 @@ def test_count_teles_counts_wire_moves() -> None:
 def test_count_cuts_counts_cross_block_hyperedges() -> None:
     seg = Segment(
         gates=[],
-        hypergraph={
-            0: [Hedge(nan=0, wires=[(-1, 0), (-2, 1)], out_pos=2)],
-            1: [Hedge(nan=0, wires=[(-1, 0), (-2, 1)], out_pos=2)],
-        },
+        hypergraph=_hyp((0, 0, (0, 1)), (1, 1, (0, 1))),
         partition={0: 0, 1: 1},
         seam=SeamCompute(),
         wire_range=(0, 0),
@@ -264,7 +261,7 @@ def test_merge_min_merges_when_merged_cut_cost_is_not_worse() -> None:
     right = _seg({0: 1, 1: 0}, SeamStop())
 
     result = merge_min(
-        lambda insts: {0: [Hedge(nan=0, wires=[(1, 0)], out_pos=len(insts) or 1)]},
+        lambda _insts: _hyp((0, 0, (0,))),
         lambda _hyp: {0: 0, 1: 0},
         n_wires=2,
         segments=[left, right],
@@ -278,7 +275,13 @@ def test_merge_min_merges_when_merged_cut_cost_is_not_worse() -> None:
 def test_merge_seams_single_segment_stops() -> None:
     segs = _ignore_last_seam([_seg({0: 0, 1: 1}, SeamCompute())])
 
-    result = merge_seams(lambda _g: {}, lambda _h: {0: 0, 1: 1}, k=2, n_wires=2, segments=segs)
+    result = merge_seams(
+        lambda _g: Hypergraph(wires={}, interactions={}),
+        lambda _h: {0: 0, 1: 1},
+        k=2,
+        n_wires=2,
+        segments=segs,
+    )
 
     assert len(result) == 1
     assert isinstance(result[0].seam, SeamStop)

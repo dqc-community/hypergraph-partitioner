@@ -18,24 +18,27 @@ from hypergraph_partitioner.models.annotated import (
     TeleportBoundary,
     WireId,
 )
-from hypergraph_partitioner.models.hypergraph import Hedge
+from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, WireVertex
 from hypergraph_partitioner.models.segment import SeamCompute, SeamStop, SeamValue, Segment
 
 
-def test_hedge_model_roundtrip() -> None:
-    hedge = Hedge(nan=0, wires=[(1, 5)], out_pos=6)
+def test_hypergraph_wire_to_interactions_indexes_by_wire() -> None:
+    hyp = Hypergraph(
+        wires={0: WireVertex(0), 1: WireVertex(1), 2: WireVertex(2)},
+        interactions={
+            10: InteractionVertex(interaction_id=10, position=5, qubits=(0, 1)),
+            11: InteractionVertex(interaction_id=11, position=9, qubits=(1, 2)),
+        },
+    )
 
-    dumped = hedge.model_dump()
-
-    assert dumped["wires"] == [(1, 5)]
-    assert dumped["out_pos"] == 6
+    assert hyp.wire_to_interactions == {0: [10], 1: [10, 11], 2: [11]}
 
 
 def test_segment_defaults() -> None:
     seg = Segment()
 
     assert seg.gates == []
-    assert seg.hypergraph == {}
+    assert seg.hypergraph == Hypergraph(wires={}, interactions={})
     assert seg.partition == {}
     assert isinstance(seg.seam, SeamCompute)
 

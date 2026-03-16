@@ -162,12 +162,11 @@ def test_produces_multiple_segments() -> None:
         config_path=KAHYPAR_CONFIG,
     )
 
-    assert len(result.segments) == 5
-    assert len(result.boundaries) == 4
-    assert count_nonlocal_interactions(result) == 14
+    assert len(result.segments) == 4
+    assert len(result.boundaries) == 3
+    assert count_nonlocal_interactions(result) == 15
     assert count_teleports(result) == 8
     assert dict(result.segments[0].partition) == {0: 0, 1: 1, 2: 1, 3: 0, 4: 0, 5: 1, 6: 0, 7: 1}
-    assert dict(result.segments[1].partition) == {0: 0, 1: 1, 2: 1, 3: 1, 4: 0, 5: 0, 6: 1, 7: 0}
+    assert dict(result.segments[1].partition) == {0: 0, 1: 1, 2: 0, 3: 1, 4: 0, 5: 1, 6: 1, 7: 0}
     assert dict(result.segments[2].partition) == {0: 0, 1: 1, 2: 1, 3: 0, 4: 0, 5: 1, 6: 1, 7: 0}
-    assert dict(result.segments[3].partition) == {0: 0, 1: 1, 2: 1, 3: 0, 4: 0, 5: 1, 6: 1, 7: 0}
-    assert dict(result.segments[4].partition) == {0: 1, 1: 1, 2: 1, 3: 0, 4: 0, 5: 0, 6: 1, 7: 0}
+    assert dict(result.segments[3].partition) == {0: 1, 1: 1, 2: 1, 3: 0, 4: 0, 5: 0, 6: 1, 7: 0}

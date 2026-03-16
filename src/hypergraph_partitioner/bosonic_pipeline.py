@@ -12,7 +12,6 @@ from bosonic_model import BarrierInstruction, Circuit, ConditionalInstruction
 from bosonic_model.instructions import CzInstruction, InstructionType
 
 from hypergraph_partitioner.cz_commutation import push_cz_early
-from hypergraph_partitioner.hgraph_builder import _split_long_hedges
 from hypergraph_partitioner.models.annotated import (
     AnnotatedOp,
     BlockId,
@@ -27,7 +26,7 @@ from hypergraph_partitioner.models.annotated import (
     TeleportBoundary,
     WireId,
 )
-from hypergraph_partitioner.models.hypergraph import Hedge, Hypergraph
+from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, WireVertex
 from hypergraph_partitioner.models.segment import SeamCompute, Segment
 from hypergraph_partitioner.partitioner import _ignore_last_seam, merge_seams, partition_hypergraph
 from hypergraph_partitioner.qiskit_normalization import normalize_to_one_qubit_and_cz
@@ -69,39 +68,24 @@ def build_hypergraph_from_instructions(
     instructions: list[InstructionType], n_qubits: int, max_hedge_dist: int
 ) -> Hypergraph:
     """Build hypergraph directly from bosonic instructions."""
-    pos = 0
-    cz_vertex = 0
-    hyp: dict[int, list[Hedge]] = {}
+    del max_hedge_dist
 
-    for inst in reversed(instructions):
-        if _is_interaction(inst):
-            wires = _interaction_wires(inst)
-            for w in wires:
-                if w not in hyp:
-                    hyp[w] = [Hedge(nan=0, wires=[(cz_vertex - 1, pos)], out_pos=pos + 1)]
-                else:
-                    last = hyp[w][-1]
-                    hyp[w][-1] = Hedge(
-                        nan=last.nan,
-                        wires=[(cz_vertex - 1, pos)] + last.wires,
-                        out_pos=last.out_pos,
-                    )
-            cz_vertex -= 1
-            pos += 1
+    wires = {wire_id: WireVertex(wire_id=wire_id) for wire_id in range(n_qubits)}
+    interactions: dict[int, InteractionVertex] = {}
+    interaction_id = 0
+
+    for position, inst in enumerate(instructions):
+        if not _is_interaction(inst):
             continue
+        qubits = tuple(_interaction_wires(inst))
+        interactions[interaction_id] = InteractionVertex(
+            interaction_id=interaction_id,
+            position=position,
+            qubits=qubits,
+        )
+        interaction_id += 1
 
-        target = _target_wire(inst)
-        if target is not None:
-            if target not in hyp:
-                hyp[target] = [Hedge(nan=0, wires=[], out_pos=pos)]
-            else:
-                last = hyp[target][-1]
-                updated_last = Hedge(nan=0, wires=last.wires, out_pos=last.out_pos)
-                hyp[target] = hyp[target][:-1] + [updated_last, Hedge(nan=0, wires=[], out_pos=pos)]
-        pos += 1
-
-    hyp = {w: _split_long_hedges(hedges, max_hedge_dist) for w, hedges in hyp.items()}
-    return {w: [h for h in hedges if h.wires] for w, hedges in hyp.items()}
+    return Hypergraph(wires=wires, interactions=interactions)
 
 
 def _interaction_seam_pos(n: int, instructions: list[InstructionType]) -> int:

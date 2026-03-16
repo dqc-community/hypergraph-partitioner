@@ -262,7 +262,7 @@ def test_preprocess_step2_pulls_cz_earlier_for_supported_u() -> None:
     assert getattr(preprocessed[0], "qubits", None) == [0, 1]
 
 
-def test_preprocess_step2_clusters_czs_into_a_single_hyperedge() -> None:
+def test_preprocess_step2_keeps_wire_interactions_in_circuit_order() -> None:
     circuit = Translator().from_qasm(
         """
         OPENQASM 2.0;
@@ -291,11 +291,10 @@ def test_preprocess_step2_clusters_czs_into_a_single_hyperedge() -> None:
 
     assert [getattr(inst, "kind", None) for inst in preprocessed[:2]] == ["cz", "cz"]
 
-    assert len(step1_hyp[0]) == 2
-    assert all(len(hedge.wires) == 1 for hedge in step1_hyp[0])
-
-    assert len(preprocessed_hyp[0]) == 1
-    assert len(preprocessed_hyp[0][0].wires) == 2
+    assert len(step1_hyp.interactions) == 2
+    assert len(preprocessed_hyp.interactions) == 2
+    assert step1_hyp.wire_to_interactions[0] == [0, 1]
+    assert preprocessed_hyp.wire_to_interactions[0] == [0, 1]
 
 
 def test_preprocess_step2_preserves_circuit_unitary() -> None:

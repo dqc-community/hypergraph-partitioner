@@ -77,10 +77,10 @@ def get_rho(n_wires: int, seg1: Segment, seg2: Segment) -> Fraction:
     changing = [w for w in range(n_wires) if w in part1 and w in part2 and part1[w] != part2[w]]
 
     def hedges(wire: Wire, hyp: Hypergraph) -> int:
-        return len(hyp.get(wire, []))
+        return len(hyp.wire_to_interactions.get(wire, []))
 
     def total_hs(hyp: Hypergraph) -> int:
-        return sum(len(v) for v in hyp.values())
+        return sum(len(v) for v in hyp.wire_to_interactions.values())
 
     def weight(wire: Wire, hyp: Hypergraph) -> Fraction:
         total = total_hs(hyp)
