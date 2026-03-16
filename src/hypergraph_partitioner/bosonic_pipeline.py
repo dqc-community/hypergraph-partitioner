@@ -170,7 +170,7 @@ def partition_circuit(
     def to_part(hyp: Hypergraph) -> dict[int, int]:
         return partition_hypergraph(hyp, n_qubits, k, config_path)
 
-    merged = merge_seams(to_hyp, to_part, k, n_qubits, initial)
+    merged = merge_seams(to_hyp, to_part, k, n_qubits, max_hedge_dist, initial)
     return _annotate_partitioned_circuit(merged)
 
 

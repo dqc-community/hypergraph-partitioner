@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 from fractions import Fraction
+from types import SimpleNamespace
 
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
 from hypergraph_partitioner.hgraph_builder import count_cuts
 from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, WireVertex
 from hypergraph_partitioner.models.segment import SeamCompute, SeamStop, SeamValue, Segment
 from hypergraph_partitioner.partitioner import (
+    WireSpan,
     _find_valley_rec,
     _heuristic_cost,
     _ignore_last_seam,
     _match_partitions_search,
+    _derive_wire_spans,
+    _split_long_spans,
     _upd_with,
     compute_new_seams,
     count_teles,
@@ -40,9 +44,13 @@ def _hyp(*interactions: tuple[int, int, tuple[int, ...]], wires: tuple[int, ...]
     )
 
 
+def _gate(*qubits: int) -> SimpleNamespace:
+    return SimpleNamespace(qubits=list(qubits))
+
+
 def _seg(partition: dict[int, int], seam: SeamCompute | SeamStop | SeamValue = SeamCompute()) -> Segment:
     hyp = _hyp((0, 0, (0, 1)))
-    return Segment(gates=[], hypergraph=hyp, partition=partition, seam=seam, wire_range=(0, 0))
+    return Segment(gates=[_gate(0, 1)], hypergraph=hyp, partition=partition, seam=seam, wire_range=(0, 0))
 
 
 def _seg_with_hyp(
@@ -91,7 +99,7 @@ def test_upd_with_renames_partition_blocks_only() -> None:
 def test_compute_new_seams_sets_seam_value() -> None:
     segs = [_seg({0: 0, 1: 1}, SeamCompute()), _seg({0: 1, 1: 1}, SeamStop())]
 
-    updated = compute_new_seams(2, segs)
+    updated = compute_new_seams(2, 100, segs)
 
     assert isinstance(updated[0].seam, SeamValue)
     assert updated[0].seam.value >= Fraction(0)
@@ -101,31 +109,85 @@ def test_get_rho_is_zero_when_no_wires_change_blocks() -> None:
     seg1 = _seg({0: 0, 1: 1})
     seg2 = _seg({0: 0, 1: 1})
 
-    rho = get_rho(2, seg1, seg2)
+    rho = get_rho(2, seg1, seg2, 100)
 
     assert rho == Fraction(0)
 
 
 def test_get_rho_uses_smaller_of_adjacent_wire_weights() -> None:
     hyp1 = _hyp((0, 0, (0, 1)))
-    hyp2 = _hyp((0, 0, (0, 1)), (1, 1, (0,)))
-    seg1 = _seg_with_hyp({0: 0, 1: 1}, hyp1)
-    seg2 = _seg_with_hyp({0: 1, 1: 1}, hyp2)
+    hyp2 = _hyp((0, 0, (0, 1)), (1, 2, (0, 1)))
+    seg1 = Segment(
+        gates=[_gate(0, 1)],
+        hypergraph=hyp1,
+        partition={0: 0, 1: 1},
+        seam=SeamCompute(),
+        wire_range=(0, 0),
+    )
+    seg2 = Segment(
+        gates=[_gate(0, 1), _gate(0), _gate(0, 1)],
+        hypergraph=hyp2,
+        partition={0: 1, 1: 1},
+        seam=SeamCompute(),
+        wire_range=(0, 0),
+    )
 
-    rho = get_rho(2, seg1, seg2)
+    rho = get_rho(2, seg1, seg2, 100)
 
     assert rho == Fraction(1, 2)
 
 
-def test_get_rho_sums_weights_for_multiple_changing_wires() -> None:
-    hyp1 = _hyp((10, 0, (0,)), (11, 0, (1,)), (12, 1, (1,)))
-    hyp2 = _hyp((10, 0, (0,)), (13, 1, (0,)), (11, 0, (1,)), (12, 1, (1,)))
-    seg1 = _seg_with_hyp({0: 0, 1: 0}, hyp1)
-    seg2 = _seg_with_hyp({0: 1, 1: 1}, hyp2)
+def test_derive_wire_spans_splits_on_single_qubit_boundaries() -> None:
+    seg = Segment(
+        gates=[_gate(0, 1), _gate(0), _gate(0, 1)],
+        hypergraph=_hyp((0, 0, (0, 1)), (1, 2, (0, 1))),
+        partition={0: 0, 1: 1},
+        seam=SeamCompute(),
+        wire_range=(0, 0),
+    )
 
-    rho = get_rho(2, seg1, seg2)
+    spans = _derive_wire_spans(seg)
 
-    assert rho == Fraction(5, 6)
+    assert spans[0] == [
+        WireSpan(wire=0, start=0, end=1, interaction_ids=(0,)),
+        WireSpan(wire=0, start=1, end=3, interaction_ids=(1,)),
+    ]
+    assert spans[1] == [WireSpan(wire=1, start=0, end=3, interaction_ids=(0, 1))]
+
+
+def test_split_long_spans_max_dist_one_splits_per_interaction() -> None:
+    interactions = {
+        0: InteractionVertex(interaction_id=0, position=0, qubits=(0, 1)),
+        1: InteractionVertex(interaction_id=1, position=2, qubits=(0, 1)),
+    }
+    spans = [WireSpan(wire=0, start=0, end=3, interaction_ids=(0, 1))]
+
+    split = _split_long_spans(spans, interactions, max_hedge_dist=1)
+
+    assert split == [
+        WireSpan(wire=0, start=0, end=1, interaction_ids=(0,)),
+        WireSpan(wire=0, start=2, end=3, interaction_ids=(1,)),
+    ]
+
+
+def test_get_rho_changes_when_max_hedge_dist_changes() -> None:
+    seg1 = Segment(
+        gates=[_gate(0, 1), _gate(0, 1), _gate(2, 3)],
+        hypergraph=_hyp((0, 0, (0, 1)), (1, 1, (0, 1)), (2, 2, (2, 3)), wires=(0, 1, 2, 3)),
+        partition={0: 0, 1: 1, 2: 0, 3: 1},
+        seam=SeamCompute(),
+        wire_range=(0, 0),
+    )
+    seg2 = Segment(
+        gates=[_gate(0, 1), _gate(0), _gate(0, 1), _gate(2, 3)],
+        hypergraph=_hyp((0, 0, (0, 1)), (1, 2, (0, 1)), (2, 3, (2, 3)), wires=(0, 1, 2, 3)),
+        partition={0: 1, 1: 1, 2: 0, 3: 1},
+        seam=SeamCompute(),
+        wire_range=(0, 0),
+    )
+
+    assert get_rho(4, seg1, seg2, 100) == Fraction(1, 4)
+    assert get_rho(4, seg1, seg2, 1) == Fraction(1, 3)
 
 
 def test_find_valley_returns_nonempty_middle() -> None:
@@ -280,6 +342,7 @@ def test_merge_seams_single_segment_stops() -> None:
         lambda _h: {0: 0, 1: 1},
         k=2,
         n_wires=2,
+        max_hedge_dist=100,
         segments=segs,
     )
 

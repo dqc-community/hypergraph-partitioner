@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+from dataclasses import dataclass
 from heapq import heapify, heappop, heappush
 from itertools import count
 from collections.abc import Callable
@@ -18,6 +19,14 @@ import kahypar
 
 ToHyp = Callable[[list[object]], Hypergraph]
 ToPart = Callable[[Hypergraph], Partition]
+
+
+@dataclass(frozen=True)
+class WireSpan:
+    wire: int
+    start: int
+    end: int
+    interaction_ids: tuple[int, ...]
 
 
 def partition_hypergraph(hyp: Hypergraph, n_qubits: int, k: int, config_path: str) -> Partition:
@@ -69,31 +78,130 @@ def _upd_with(matching: Matching, seg: Segment) -> Segment:
     )
 
 
-def get_rho(n_wires: int, seg1: Segment, seg2: Segment) -> Fraction:
+def _instruction_qubits(inst: object) -> list[int]:
+    inner = getattr(inst, "op", inst)
+    return list(getattr(inner, "qubits", []) or [])
+
+
+def _derive_wire_spans(seg: Segment) -> dict[int, list[WireSpan]]:
+    interaction_id_by_position = {
+        interaction.position: interaction.interaction_id for interaction in seg.hypergraph.interactions.values()
+    }
+    spans: dict[int, list[WireSpan]] = {}
+    open_spans: dict[int, tuple[int, list[int]]] = {}
+
+    for pos, inst in enumerate(seg.gates):
+        qubits = _instruction_qubits(inst)
+        if len(qubits) >= 2:
+            interaction_id = interaction_id_by_position.get(pos)
+            if interaction_id is None:
+                continue
+            for wire in qubits:
+                start, interaction_ids = open_spans.get(wire, (0, []))
+                interaction_ids.append(interaction_id)
+                open_spans[wire] = (start, interaction_ids)
+            continue
+
+        if len(qubits) == 1:
+            wire = qubits[0]
+            start, interaction_ids = open_spans.get(wire, (0, []))
+            spans.setdefault(wire, []).append(
+                WireSpan(wire=wire, start=start, end=pos, interaction_ids=tuple(interaction_ids))
+            )
+            open_spans[wire] = (pos, [])
+
+    end_pos = len(seg.gates)
+    for wire, (start, interaction_ids) in open_spans.items():
+        spans.setdefault(wire, []).append(
+            WireSpan(wire=wire, start=start, end=end_pos, interaction_ids=tuple(interaction_ids))
+        )
+
+    return {
+        wire: [span for span in wire_spans if span.interaction_ids]
+        for wire, wire_spans in spans.items()
+        if any(span.interaction_ids for span in wire_spans)
+    }
+
+
+def _split_long_spans(
+    spans: list[WireSpan], interactions: dict[int, object], max_hedge_dist: int
+) -> list[WireSpan]:
+    if not spans:
+        return []
+
+    result: list[WireSpan] = []
+    queue = list(spans)
+
+    while queue:
+        span = queue.pop(0)
+        if max_hedge_dist == 1:
+            for interaction_id in span.interaction_ids:
+                position = interactions[interaction_id].position
+                result.append(
+                    WireSpan(
+                        wire=span.wire,
+                        start=position,
+                        end=position + 1,
+                        interaction_ids=(interaction_id,),
+                    )
+                )
+        elif max_hedge_dist < (span.end - span.start) and len(span.interaction_ids) > 1:
+            split = span.start + (span.end - span.start) // 2
+            before = tuple(
+                interaction_id
+                for interaction_id in span.interaction_ids
+                if interactions[interaction_id].position < split
+            )
+            after = tuple(
+                interaction_id
+                for interaction_id in span.interaction_ids
+                if interactions[interaction_id].position >= split
+            )
+            if after:
+                queue.insert(0, WireSpan(wire=span.wire, start=split, end=span.end, interaction_ids=after))
+            if before:
+                queue.insert(0, WireSpan(wire=span.wire, start=span.start, end=split, interaction_ids=before))
+        else:
+            result.append(span)
+
+    return result
+
+
+def _split_wire_spans(seg: Segment, max_hedge_dist: int) -> dict[int, list[WireSpan]]:
+    spans = _derive_wire_spans(seg)
+    return {
+        wire: _split_long_spans(wire_spans, seg.hypergraph.interactions, max_hedge_dist)
+        for wire, wire_spans in spans.items()
+    }
+
+
+def get_rho(n_wires: int, seg1: Segment, seg2: Segment, max_hedge_dist: int) -> Fraction:
     """Compute seam cost between two adjacent segments."""
-    hyp1, part1 = seg1.hypergraph, seg1.partition
-    hyp2, part2 = seg2.hypergraph, seg2.partition
+    part1 = seg1.partition
+    part2 = seg2.partition
+    spans1 = _split_wire_spans(seg1, max_hedge_dist)
+    spans2 = _split_wire_spans(seg2, max_hedge_dist)
 
     changing = [w for w in range(n_wires) if w in part1 and w in part2 and part1[w] != part2[w]]
 
-    def hedges(wire: Wire, hyp: Hypergraph) -> int:
-        return len(hyp.wire_to_interactions.get(wire, []))
+    def hedges(wire: Wire, spans: dict[int, list[WireSpan]]) -> int:
+        return len(spans.get(wire, []))
 
-    def total_hs(hyp: Hypergraph) -> int:
-        return sum(len(v) for v in hyp.wire_to_interactions.values())
+    def total_hs(spans: dict[int, list[WireSpan]]) -> int:
+        return sum(len(v) for v in spans.values())
 
-    def weight(wire: Wire, hyp: Hypergraph) -> Fraction:
-        total = total_hs(hyp)
+    def weight(wire: Wire, spans: dict[int, list[WireSpan]]) -> Fraction:
+        total = total_hs(spans)
         if total == 0:
             return Fraction(0)
-        return Fraction(hedges(wire, hyp), total)
+        return Fraction(hedges(wire, spans), total)
 
     total = Fraction(0)
     for w in changing:
-        if hedges(w, hyp1) < hedges(w, hyp2):
-            total += weight(w, hyp1)
+        if hedges(w, spans1) < hedges(w, spans2):
+            total += weight(w, spans1)
         else:
-            total += weight(w, hyp2)
+            total += weight(w, spans2)
     return total
 
 
@@ -204,12 +312,12 @@ def _match_partitions_search(
     return {b: b for b in all_blocks}
 
 
-def compute_new_seams(n_wires: int, segments: list[Segment]) -> list[Segment]:
+def compute_new_seams(n_wires: int, max_hedge_dist: int, segments: list[Segment]) -> list[Segment]:
     """Assign rho values to Compute seams."""
     result: list[Segment] = []
     for i, seg in enumerate(segments):
         if isinstance(seg.seam, SeamCompute) and i + 1 < len(segments):
-            new_seam: Seam = SeamValue(value=get_rho(n_wires, seg, segments[i + 1]))
+            new_seam: Seam = SeamValue(value=get_rho(n_wires, seg, segments[i + 1], max_hedge_dist))
         else:
             new_seam = seg.seam
         result.append(
@@ -324,7 +432,9 @@ def merge_min(to_hyp: ToHyp, to_part: ToPart, n_wires: int, segments: list[Segme
     )
 
 
-def merge_seams(to_hyp: ToHyp, to_part: ToPart, k: int, n_wires: int, segments: list[Segment]) -> list[Segment]:
+def merge_seams(
+    to_hyp: ToHyp, to_part: ToPart, k: int, n_wires: int, max_hedge_dist: int, segments: list[Segment]
+) -> list[Segment]:
     """Iteratively merge segments until all seams are Stop."""
     id_matching: Matching = {b: b for b in range(k)}
 
@@ -333,6 +443,6 @@ def merge_seams(to_hyp: ToHyp, to_part: ToPart, k: int, n_wires: int, segments: 
             return segments
 
         matched = match_segments(k, n_wires, id_matching, segments)
-        seamed = compute_new_seams(n_wires, matched)
+        seamed = compute_new_seams(n_wires, max_hedge_dist, matched)
         merged = merge_min(to_hyp, to_part, n_wires, seamed)
         segments = _ignore_last_seam(merged)
