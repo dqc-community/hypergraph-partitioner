@@ -78,7 +78,7 @@ into explicit protocol operations such as:
 - classically controlled corrections,
 - logical wire relocation.
 
-That logic is currently explored and validated in tests, not exposed as library functionality.
+That logic now lives in the production helper module [lowering.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/lowering.py) and is validated in tests, but it is not yet wired into a public lowering API.
 
 ## Lowering
 
@@ -87,7 +87,10 @@ This repo does not yet expose a production `lower_partitioned_circuit(...)` API,
 - `telegate`: remote `CZ` inside a segment
 - `teledata`: qubit state teleportation across a segment boundary
 
-Those candidate lowerings live in [test_telegate_teledata.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata.py).
+Those candidate lowerings live in [lowering.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/lowering.py). The fidelity checks and Qiskit/Aer verification live in:
+
+- [test_telegate_teledata.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata.py)
+- [test_telegate_teledata_qiskit.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata_qiskit.py)
 
 Both are validated against ideal circuits with Aer density-matrix simulation:
 
@@ -99,7 +102,7 @@ The tests also render `mpl` diagrams to `.pytest_artifacts/`.
 Generate the diagrams locally with:
 
 ```bash
-uv run pytest tests/unit/test_telegate_teledata.py -q
+uv run pytest tests/unit/test_telegate_teledata.py tests/unit/test_telegate_teledata_qiskit.py -q
 ```
 
 ### Telegate Lowering
@@ -168,7 +171,7 @@ uv run --extra dev python -m pytest -q
 Run one focused test file:
 
 ```bash
-uv run pytest tests/unit/test_telegate_teledata.py -q
+uv run pytest tests/unit/test_telegate_teledata.py tests/unit/test_telegate_teledata_qiskit.py -q
 ```
 
 Run one integration test file:
@@ -269,9 +272,10 @@ See [__init__.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-p
 
 - `partition_circuit(...)` currently returns annotations, not a lowered distributed circuit.
 - `max_hedge_dist` affects seam scoring / segmentation behavior, not the KaHyPar netlist directly.
-- The test file [test_telegate_teledata.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata.py) contains Aer-verified candidate protocol lowerings for:
+- The production helper module [lowering.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/lowering.py) contains candidate protocol builders for:
   - remote `CZ` (`telegate`)
   - qubit state teleportation (`teledata`)
+- The tests [test_telegate_teledata.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata.py) and [test_telegate_teledata_qiskit.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata_qiskit.py) verify those lowerings with Aer.
 - The generated protocol diagrams are written to `.pytest_artifacts/` during those tests.
 
 ## Repo Layout
@@ -288,8 +292,12 @@ Key files:
   - explicit hypergraph data model
 - [src/hypergraph_partitioner/models/annotated.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/models/annotated.py)
   - public annotated IR
+- [src/hypergraph_partitioner/lowering.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/lowering.py)
+  - candidate telegate / teledata protocol builders
 - [tests/unit/test_telegate_teledata.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata.py)
-  - Aer-verified telegate / teledata protocol tests
+  - DSL-to-Qiskit Aer verification for production lowering helpers
+- [tests/unit/test_telegate_teledata_qiskit.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata_qiskit.py)
+  - Qiskit-native protocol reference tests and diagram generation
 
 ## Current Status
 
