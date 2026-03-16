@@ -21,7 +21,7 @@ Given a `bosonic_model.Circuit`, it:
 5. merges adjacent segments using seam heuristics and `max_hedge_dist`,
 6. returns a `PartitionedCircuit` with explicit annotations.
 
-The public output is an annotated IR, not a fully lowered distributed circuit.
+The public partitioning output is an annotated IR, and the repo also exposes staged helpers to convert that IR into symbolic and fully lowered distributed circuits.
 
 ## Current Output Model
 
@@ -43,7 +43,10 @@ This means the repo currently answers:
 - which `CZ`s are remote inside a segment,
 - which wires need to move between segments.
 
-It does not yet lower those annotations into a concrete distributed execution circuit in production code.
+Those annotations can then be turned into:
+
+- a symbolic `DistributedCircuit` via `annotated_to_distributed_circuit(...)`
+- a fully lowered `DistributedCircuit` via `lower_distributed_circuit(...)`
 
 ## What Is Implemented
 
@@ -58,36 +61,31 @@ It does not yet lower those annotations into a concrete distributed execution ci
 - restored `max_hedge_dist` influence on segmentation
 - annotated output for telegate / teledata
 - end-to-end tests for multi-segment behavior
-- Aer-verified protocol tests for candidate telegate and teledata lowerings
+- staged conversion from `PartitionedCircuit` to symbolic `DistributedCircuit`
+- production lowering from symbolic `DistributedCircuit` to Bell/LOCC protocol circuits
+- Aer-verified protocol tests for telegate and teledata lowerings
 
 ## What Is Not Implemented Yet
 
-The repo does not yet provide a production lowering pass such as:
+The remaining missing pieces are mostly around ergonomics and downstream integration:
 
-- `lower_partitioned_circuit(...)`
-
-There is currently no production code that turns:
-
-- `NonlocalCZOp`
-- `BoundaryTeleportOp`
-
-into explicit protocol operations such as:
-
-- Bell-pair preparation,
-- measurement and reset,
-- classically controlled corrections,
-- logical wire relocation.
-
-That logic now lives in the production helper module [lowering.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/lowering.py) and is validated in tests, but it is not yet wired into a public lowering API.
+- a single convenience wrapper from raw `Circuit` to final lowered output, if desired
+- richer execution/runtime metadata for lowered teleports
+- tighter downstream integration outside this repo
 
 ## Lowering
 
-This repo does not yet expose a production `lower_partitioned_circuit(...)` API, but it does contain Aer-verified candidate lowering patterns for the two important annotation types:
+This repo exposes two production lowering stages:
+
+- `annotated_to_distributed_circuit(...)`
+- `lower_distributed_circuit(...)`
+
+Together they handle the two important annotation types:
 
 - `telegate`: remote `CZ` inside a segment
 - `teledata`: qubit state teleportation across a segment boundary
 
-Those candidate lowerings live in [lowering.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/lowering.py). The fidelity checks and Qiskit/Aer verification live in:
+The implementation lives in [lowering.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/src/hypergraph_partitioner/lowering.py). The fidelity checks and Qiskit/Aer verification live in:
 
 - [test_telegate_teledata.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata.py)
 - [test_telegate_teledata_qiskit.py](/Users/elieben-shlomo/Code/projects/dqc-community/hypergraph-partitioner/tests/unit/test_telegate_teledata_qiskit.py)
@@ -217,9 +215,11 @@ uv run python examples/search_two_segment_circuit.py --max-candidates 1000
 from bosonic_model.qasm import Translator
 
 from hypergraph_partitioner import (
+    annotated_to_distributed_circuit,
     count_interactions,
     count_nonlocal_interactions,
     count_teleports,
+    lower_distributed_circuit,
     partition_circuit,
 )
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
@@ -247,6 +247,13 @@ print(result)
 print(count_interactions(circuit.instructions))
 print(count_nonlocal_interactions(result))
 print(count_teleports(result))
+
+distributed_symbolic = annotated_to_distributed_circuit(
+    result,
+    qpu_data_capacity=4,
+)
+
+distributed_lowered = lower_distributed_circuit(distributed_symbolic)
 ```
 
 ## Public API
@@ -254,6 +261,8 @@ print(count_teleports(result))
 The package exports:
 
 - `partition_circuit`
+- `annotated_to_distributed_circuit`
+- `lower_distributed_circuit`
 - `count_interactions`
 - `count_nonlocal_interactions`
 - `count_teleports`
