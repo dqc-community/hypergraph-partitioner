@@ -1,12 +1,17 @@
-"""Protocol-building helpers for telegate and teledata lowerings."""
+"""Protocol-building and lowering helpers for telegate and teledata."""
 
 from __future__ import annotations
+
+from dataclasses import dataclass, field
+from math import pi
 
 from bosonic_model import (
     Circuit,
     Condition,
     ConditionalInstruction,
+    DistributedCircuit,
     GateInstruction,
+    InstructionType,
     MeasureInstruction,
     Register,
     ResetInstruction,
@@ -15,7 +20,41 @@ from bosonic_model import (
 )
 from qiskit.circuit import QuantumCircuit
 from qiskit.circuit.library import UnitaryGate
-from math import pi
+
+from hypergraph_partitioner.models.annotated import (
+    AnnotatedOp,
+    BoundaryTeleportOp,
+    LocalOp,
+    NonlocalCZOp,
+    PartitionedCircuit,
+    WireId,
+)
+
+
+@dataclass(frozen=True)
+class PhysicalLocation:
+    block: int
+    qubit: int
+
+
+@dataclass
+class QpuLayout:
+    block: int
+    data_slots: list[int]
+    comm_slots: list[int]
+    receiver_slots: list[int]
+    free_comm: set[int] = field(default_factory=set)
+    free_receiver: set[int] = field(default_factory=set)
+
+
+@dataclass
+class LoweringState:
+    qpu_layouts: dict[int, QpuLayout]
+    circuits: dict[int, Circuit]
+    wire_locations: dict[int, PhysicalLocation]
+    instruction_index: dict[int, int] = field(default_factory=dict)
+    next_order: int = 0
+    next_cbit: int = 0
 
 
 def _registers(
@@ -42,23 +81,372 @@ def bell_pair_phi_plus_matrix() -> list[list[complex]]:
 
 def build_telegate_remote_cz_dsl() -> Circuit:
     qregs, cregs = _registers(n_qubits=4, classical=(("c_start", 1), ("c_end", 1)))
-    instructions: list = []
-
-    data_ctrl = 0
-    comm_ctrl = 1
-    comm_tgt = 2
-    data_tgt = 3
-    c_start = 0
-    c_end = 1
-
-    instructions.append(
-        GateInstruction(
-            name="bell_pair_phi_plus",
-            qubits=[comm_ctrl, comm_tgt],
-            params=[],
-            opaque=True,
-        )
+    instructions: list[InstructionType] = []
+    _emit_telegate_protocol(
+        instructions,
+        data_ctrl=0,
+        comm_ctrl=1,
+        comm_tgt=2,
+        data_tgt=3,
+        c_start=0,
+        c_end=1,
     )
+    return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
+
+
+def build_ideal_remote_cz_dsl() -> Circuit:
+    qregs, cregs = _registers(n_qubits=4, classical=())
+    instructions: list[InstructionType] = [
+        GateInstruction(name="cz", qubits=[0, 3], params=[], opaque=True)
+    ]
+    return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
+
+
+def build_teledata_dsl() -> Circuit:
+    qregs, cregs = _registers(n_qubits=3, classical=(("c_data", 1), ("c_comm", 1)))
+    instructions: list[InstructionType] = []
+    _emit_teledata_protocol(instructions, data_src=0, comm_src=1, comm_dst=2, c_data=0, c_comm=1)
+    return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
+
+
+def build_ideal_teledata_dsl() -> Circuit:
+    qregs, cregs = _registers(n_qubits=3, classical=())
+    return Circuit(qregs=qregs, cregs=cregs, instructions=[])
+
+
+def lower_partitioned_circuit(
+    partitioned: PartitionedCircuit, *, qpu_data_capacity: int
+) -> DistributedCircuit:
+    if qpu_data_capacity < 1:
+        raise ValueError("qpu_data_capacity must be positive")
+    if not partitioned.segments:
+        return DistributedCircuit(qubits_per_node={}, circuits={})
+
+    n_blocks = _num_blocks(partitioned)
+    _validate_capacity(partitioned, qpu_data_capacity)
+    state = _initialize_state(partitioned, qpu_data_capacity, n_blocks)
+
+    for op in partitioned.operations:
+        if isinstance(op, LocalOp):
+            _lower_local(op, state)
+        elif isinstance(op, NonlocalCZOp):
+            _lower_telegate(op, state)
+        elif isinstance(op, BoundaryTeleportOp):
+            _lower_teledata(op, state)
+        else:
+            raise TypeError(f"unsupported annotated op: {type(op).__name__}")
+
+    total_qubits = n_blocks * 3 * qpu_data_capacity
+    qregs = {"q": Register(name="q", size=total_qubits, base=0)}
+    cregs = {"c": Register(name="c", size=state.next_cbit, base=0)} if state.next_cbit else {}
+    for circuit in state.circuits.values():
+        circuit.qregs = qregs
+        circuit.cregs = cregs
+
+    lowered = DistributedCircuit(
+        qubits_per_node={
+            block: layout.data_slots + layout.comm_slots + layout.receiver_slots
+            for block, layout in state.qpu_layouts.items()
+        },
+        circuits=state.circuits,
+    )
+    lowered._instruction_index = state.instruction_index
+    return lowered
+
+
+def to_aer_compatible_qiskit(circuit: QuantumCircuit) -> QuantumCircuit:
+    rewritten = QuantumCircuit(*circuit.qregs, *circuit.cregs)
+    for inst in circuit.data:
+        op = inst.operation
+        if op.name in {"bell_pair_phi_plus", "remote_bell_pair_phi_plus"}:
+            rewritten.append(
+                UnitaryGate(bell_pair_phi_plus_matrix(), label=op.name),
+                inst.qubits,
+                inst.clbits,
+            )
+            continue
+        if op.name in {"remote_link_psi_minus", "remote_link_psi_plus"}:
+            rewritten.append(UnitaryGate(op.to_matrix(), label=op.name), inst.qubits, inst.clbits)
+            continue
+        rewritten.append(op, inst.qubits, inst.clbits)
+    return rewritten
+
+
+def _num_blocks(partitioned: PartitionedCircuit) -> int:
+    max_block = -1
+    for seg in partitioned.segments:
+        for block in seg.partition.values():
+            max_block = max(max_block, int(block))
+    return max_block + 1 if max_block >= 0 else 0
+
+
+def _validate_capacity(partitioned: PartitionedCircuit, qpu_data_capacity: int) -> None:
+    for seg in partitioned.segments:
+        per_block: dict[int, int] = {}
+        for block in seg.partition.values():
+            per_block[int(block)] = per_block.get(int(block), 0) + 1
+        for block, count in per_block.items():
+            if count > qpu_data_capacity:
+                raise ValueError(
+                    f"segment {seg.segment_id} assigns {count} wires to block {block}, "
+                    f"exceeding qpu_data_capacity={qpu_data_capacity}"
+                )
+
+
+def _max_existing_cbit(partitioned: PartitionedCircuit) -> int:
+    maximum = -1
+    for op in partitioned.operations:
+        if isinstance(op, LocalOp):
+            maximum = max(maximum, _max_cbit_in_instruction(op.instruction))
+    return maximum
+
+
+def _max_cbit_in_instruction(inst: InstructionType) -> int:
+    if isinstance(inst, MeasureInstruction):
+        return inst.cbit
+    if isinstance(inst, ConditionalInstruction):
+        return max(inst.condition.cbit, _max_cbit_in_instruction(inst.op))
+    return -1
+
+
+def _initialize_state(
+    partitioned: PartitionedCircuit, qpu_data_capacity: int, n_blocks: int
+) -> LoweringState:
+    qpu_layouts: dict[int, QpuLayout] = {}
+    circuits = {block: Circuit() for block in range(n_blocks)}
+    for block in range(n_blocks):
+        base = block * 3 * qpu_data_capacity
+        data_slots = list(range(base, base + qpu_data_capacity))
+        comm_slots = list(range(base + qpu_data_capacity, base + 2 * qpu_data_capacity))
+        receiver_slots = list(range(base + 2 * qpu_data_capacity, base + 3 * qpu_data_capacity))
+        qpu_layouts[block] = QpuLayout(
+            block=block,
+            data_slots=data_slots,
+            comm_slots=comm_slots,
+            receiver_slots=receiver_slots,
+            free_comm=set(comm_slots),
+            free_receiver=set(receiver_slots),
+        )
+
+    first_segment = partitioned.segments[0]
+    wire_locations: dict[int, PhysicalLocation] = {}
+    for block in range(n_blocks):
+        wires = sorted(int(wire) for wire, owner in first_segment.partition.items() if int(owner) == block)
+        for slot, wire in zip(qpu_layouts[block].data_slots, wires, strict=False):
+            wire_locations[wire] = PhysicalLocation(block=block, qubit=slot)
+
+    return LoweringState(
+        qpu_layouts=qpu_layouts,
+        circuits=circuits,
+        wire_locations=wire_locations,
+        next_cbit=_max_existing_cbit(partitioned) + 1,
+    )
+
+
+def _alloc_comm(layout: QpuLayout) -> int:
+    if not layout.free_comm:
+        raise ValueError(f"block {layout.block} has no free communication qubits")
+    return min(layout.free_comm)
+
+
+def _free_comm(layout: QpuLayout, qubit: int) -> None:
+    layout.free_comm.add(qubit)
+
+
+def _alloc_receiver(layout: QpuLayout) -> int:
+    if not layout.free_receiver:
+        raise ValueError(f"block {layout.block} has no free receiver qubits")
+    return min(layout.free_receiver)
+
+
+def _free_receiver(layout: QpuLayout, qubit: int) -> None:
+    layout.free_receiver.add(qubit)
+
+
+def _alloc_cbit(state: LoweringState) -> int:
+    cbit = state.next_cbit
+    state.next_cbit += 1
+    return cbit
+
+
+def _append_instruction(state: LoweringState, node: int, inst: InstructionType) -> None:
+    state.circuits[node].instructions.append(inst)
+    state.instruction_index[id(inst)] = state.next_order
+    state.next_order += 1
+
+
+def _append_shared_remote(
+    state: LoweringState, nodes: tuple[int, int], inst: InstructionType
+) -> None:
+    for node in nodes:
+        state.circuits[node].instructions.append(inst)
+    state.instruction_index[id(inst)] = state.next_order
+    state.next_order += 1
+
+
+def _lower_local(op: LocalOp, state: LoweringState) -> None:
+    inst = op.instruction
+    inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
+    qubits = list(getattr(inner, "qubits", []) or [])
+    qubit_map = {qubit: state.wire_locations[qubit].qubit for qubit in qubits if qubit in state.wire_locations}
+    mapped = _remap_instruction(inst, qubit_map)
+    if qubits:
+        node = state.wire_locations[qubits[0]].block
+    else:
+        node = 0
+    _append_instruction(state, node, mapped)
+
+
+def _lower_telegate(op: NonlocalCZOp, state: LoweringState) -> None:
+    control = state.wire_locations[int(op.control_wire)]
+    target = state.wire_locations[int(op.target_wire)]
+    control_layout = state.qpu_layouts[control.block]
+    target_layout = state.qpu_layouts[target.block]
+    comm_ctrl = _alloc_comm(control_layout)
+    comm_tgt = _alloc_comm(target_layout)
+    c_start = _alloc_cbit(state)
+    c_end = _alloc_cbit(state)
+
+    remote_bell = GateInstruction(
+        name="remote_bell_pair_phi_plus",
+        qubits=[comm_ctrl, comm_tgt],
+        params=[],
+        opaque=True,
+    )
+    _append_shared_remote(state, (control.block, target.block), remote_bell)
+
+    control_insts: list[InstructionType] = []
+    target_insts: list[InstructionType] = []
+    control_final_insts: list[InstructionType] = []
+    _emit_telegate_protocol(
+        control_insts,
+        data_ctrl=control.qubit,
+        comm_ctrl=comm_ctrl,
+        comm_tgt=comm_tgt,
+        data_tgt=target.qubit,
+        c_start=c_start,
+        c_end=c_end,
+        include_bell=False,
+        target_instructions=target_insts,
+        source_final_instructions=control_final_insts,
+    )
+    for inst in control_insts:
+        _append_instruction(state, control.block, inst)
+    for inst in target_insts:
+        _append_instruction(state, target.block, inst)
+    for inst in control_final_insts:
+        _append_instruction(state, control.block, inst)
+
+    _free_comm(control_layout, comm_ctrl)
+    _free_comm(target_layout, comm_tgt)
+
+
+def _lower_teledata(op: BoundaryTeleportOp, state: LoweringState) -> None:
+    wire = int(op.wire)
+    source = state.wire_locations[wire]
+    src_layout = state.qpu_layouts[source.block]
+    dst_layout = state.qpu_layouts[int(op.to_block)]
+    comm_src = _alloc_comm(src_layout)
+    comm_dst = _alloc_receiver(dst_layout)
+    c_data = _alloc_cbit(state)
+    c_comm = _alloc_cbit(state)
+
+    remote_bell = GateInstruction(
+        name="remote_bell_pair_phi_plus",
+        qubits=[comm_src, comm_dst],
+        params=[],
+        opaque=True,
+    )
+    _append_shared_remote(state, (source.block, int(op.to_block)), remote_bell)
+
+    source_insts: list[InstructionType] = []
+    dest_insts: list[InstructionType] = []
+    _emit_teledata_protocol(
+        source_insts,
+        data_src=source.qubit,
+        comm_src=comm_src,
+        comm_dst=comm_dst,
+        c_data=c_data,
+        c_comm=c_comm,
+        include_bell=False,
+        dest_instructions=dest_insts,
+    )
+    for inst in source_insts:
+        _append_instruction(state, source.block, inst)
+    for inst in dest_insts:
+        _append_instruction(state, int(op.to_block), inst)
+
+    if source.qubit in src_layout.receiver_slots:
+        _free_receiver(src_layout, source.qubit)
+    _free_comm(src_layout, comm_src)
+    state.wire_locations[wire] = PhysicalLocation(block=int(op.to_block), qubit=comm_dst)
+
+
+def _remap_instruction(
+    inst: InstructionType,
+    qubit_map: dict[int, int],
+    cbit_map: dict[int, int] | None = None,
+) -> InstructionType:
+    cbit_map = cbit_map or {}
+    if isinstance(inst, ConditionalInstruction):
+        mapped_op = _remap_instruction(inst.op, qubit_map, cbit_map)
+        mapped_cbit = cbit_map.get(inst.condition.cbit, inst.condition.cbit)
+        return inst.model_copy(
+            update={
+                "qubits": [qubit_map.get(q, q) for q in inst.qubits],
+                "condition": Condition(cbit=mapped_cbit, value=inst.condition.value),
+                "op": mapped_op,
+            }
+        )
+
+    update: dict[str, object] = {"qubits": [qubit_map.get(q, q) for q in inst.qubits]}
+    for field_name in (
+        "qubit",
+        "control",
+        "target",
+        "a",
+        "b",
+        "control1",
+        "control2",
+        "control3",
+        "control4",
+        "target1",
+        "target2",
+    ):
+        if hasattr(inst, field_name):
+            value = getattr(inst, field_name)
+            update[field_name] = qubit_map.get(value, value)
+    if isinstance(inst, MeasureInstruction):
+        update["cbit"] = cbit_map.get(inst.cbit, inst.cbit)
+    return inst.model_copy(update=update)
+
+
+def _emit_telegate_protocol(
+    instructions: list[InstructionType],
+    *,
+    data_ctrl: int,
+    comm_ctrl: int,
+    comm_tgt: int,
+    data_tgt: int,
+    c_start: int,
+    c_end: int,
+    include_bell: bool = True,
+    target_instructions: list[InstructionType] | None = None,
+    source_final_instructions: list[InstructionType] | None = None,
+) -> None:
+    target_instructions = target_instructions if target_instructions is not None else instructions
+    source_final_instructions = (
+        source_final_instructions if source_final_instructions is not None else instructions
+    )
+    if include_bell:
+        instructions.append(
+            GateInstruction(
+                name="bell_pair_phi_plus",
+                qubits=[comm_ctrl, comm_tgt],
+                params=[],
+                opaque=True,
+            )
+        )
     instructions.append(
         UInstruction(
             qubit=comm_ctrl,
@@ -110,7 +498,7 @@ def build_telegate_remote_cz_dsl() -> Circuit:
     )
     instructions.append(MeasureInstruction(qubit=comm_ctrl, cbit=c_start, qubits=[comm_ctrl]))
     instructions.append(ResetInstruction(qubit=comm_ctrl, qubits=[comm_ctrl]))
-    instructions.append(
+    target_instructions.append(
         ConditionalInstruction(
             condition=Condition(cbit=c_start, value=True),
             op=UInstruction(
@@ -124,7 +512,7 @@ def build_telegate_remote_cz_dsl() -> Circuit:
             qubits=[comm_tgt],
         )
     )
-    instructions.append(
+    target_instructions.append(
         UInstruction(
             qubit=comm_tgt,
             qubits=[comm_tgt],
@@ -134,7 +522,7 @@ def build_telegate_remote_cz_dsl() -> Circuit:
             params=[0, 0, -pi / 2],
         )
     )
-    instructions.append(
+    target_instructions.append(
         UInstruction(
             qubit=data_tgt,
             qubits=[data_tgt],
@@ -144,7 +532,7 @@ def build_telegate_remote_cz_dsl() -> Circuit:
             params=[0, 0, -pi / 2],
         )
     )
-    instructions.append(
+    target_instructions.append(
         RzzInstruction(
             a=comm_tgt,
             b=data_tgt,
@@ -153,7 +541,7 @@ def build_telegate_remote_cz_dsl() -> Circuit:
             params=[pi / 2],
         )
     )
-    instructions.append(
+    target_instructions.append(
         UInstruction(
             qubit=comm_tgt,
             qubits=[comm_tgt],
@@ -163,9 +551,9 @@ def build_telegate_remote_cz_dsl() -> Circuit:
             params=[pi / 2, 0, pi],
         )
     )
-    instructions.append(MeasureInstruction(qubit=comm_tgt, cbit=c_end, qubits=[comm_tgt]))
-    instructions.append(ResetInstruction(qubit=comm_tgt, qubits=[comm_tgt]))
-    instructions.append(
+    target_instructions.append(MeasureInstruction(qubit=comm_tgt, cbit=c_end, qubits=[comm_tgt]))
+    target_instructions.append(ResetInstruction(qubit=comm_tgt, qubits=[comm_tgt]))
+    source_final_instructions.append(
         ConditionalInstruction(
             condition=Condition(cbit=c_end, value=True),
             op=UInstruction(
@@ -180,34 +568,28 @@ def build_telegate_remote_cz_dsl() -> Circuit:
         )
     )
 
-    return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
 
-
-def build_ideal_remote_cz_dsl() -> Circuit:
-    qregs, cregs = _registers(n_qubits=4, classical=())
-    instructions: list = []
-    instructions.append(GateInstruction(name="cz", qubits=[0, 3], params=[], opaque=True))
-    return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
-
-
-def build_teledata_dsl() -> Circuit:
-    qregs, cregs = _registers(n_qubits=3, classical=(("c_data", 1), ("c_comm", 1)))
-    instructions: list = []
-
-    data_src = 0
-    comm_src = 1
-    comm_dst = 2
-    c_data = 0
-    c_comm = 1
-
-    instructions.append(
-        GateInstruction(
-            name="bell_pair_phi_plus",
-            qubits=[comm_src, comm_dst],
-            params=[],
-            opaque=True,
+def _emit_teledata_protocol(
+    instructions: list[InstructionType],
+    *,
+    data_src: int,
+    comm_src: int,
+    comm_dst: int,
+    c_data: int,
+    c_comm: int,
+    include_bell: bool = True,
+    dest_instructions: list[InstructionType] | None = None,
+) -> None:
+    dest_instructions = dest_instructions if dest_instructions is not None else instructions
+    if include_bell:
+        instructions.append(
+            GateInstruction(
+                name="bell_pair_phi_plus",
+                qubits=[comm_src, comm_dst],
+                params=[],
+                opaque=True,
+            )
         )
-    )
     instructions.append(
         UInstruction(
             qubit=comm_src,
@@ -271,7 +653,7 @@ def build_teledata_dsl() -> Circuit:
     instructions.append(ResetInstruction(qubit=data_src, qubits=[data_src]))
     instructions.append(MeasureInstruction(qubit=comm_src, cbit=c_comm, qubits=[comm_src]))
     instructions.append(ResetInstruction(qubit=comm_src, qubits=[comm_src]))
-    instructions.append(
+    dest_instructions.append(
         ConditionalInstruction(
             condition=Condition(cbit=c_comm, value=True),
             op=UInstruction(
@@ -285,7 +667,7 @@ def build_teledata_dsl() -> Circuit:
             qubits=[comm_dst],
         )
     )
-    instructions.append(
+    dest_instructions.append(
         ConditionalInstruction(
             condition=Condition(cbit=c_data, value=True),
             op=UInstruction(
@@ -299,27 +681,3 @@ def build_teledata_dsl() -> Circuit:
             qubits=[comm_dst],
         )
     )
-    return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
-
-
-def build_ideal_teledata_dsl() -> Circuit:
-    qregs, cregs = _registers(n_qubits=3, classical=())
-    return Circuit(qregs=qregs, cregs=cregs, instructions=[])
-
-
-def to_aer_compatible_qiskit(circuit: QuantumCircuit) -> QuantumCircuit:
-    rewritten = QuantumCircuit(*circuit.qregs, *circuit.cregs)
-    for inst in circuit.data:
-        op = inst.operation
-        if op.name == "bell_pair_phi_plus":
-            rewritten.append(
-                UnitaryGate(bell_pair_phi_plus_matrix(), label=op.name),
-                inst.qubits,
-                inst.clbits,
-            )
-            continue
-        if op.name in {"remote_link_psi_minus", "remote_link_psi_plus"}:
-            rewritten.append(UnitaryGate(op.to_matrix(), label=op.name), inst.qubits, inst.clbits)
-            continue
-        rewritten.append(op, inst.qubits, inst.clbits)
-    return rewritten
