@@ -23,7 +23,7 @@ from hypergraph_partitioner.models.segment import SeamCompute, SeamStop, SeamVal
 
 def test_hypergraph_qubit_to_interactions_indexes_by_wire() -> None:
     hyp = Hypergraph(
-        wires={0: QubitVertex(0), 1: QubitVertex(1), 2: QubitVertex(2)},
+        qubits={0: QubitVertex(0), 1: QubitVertex(1), 2: QubitVertex(2)},
         interactions={
             10: InteractionVertex(interaction_id=10, position=5, qubits=(0, 1)),
             11: InteractionVertex(interaction_id=11, position=9, qubits=(1, 2)),

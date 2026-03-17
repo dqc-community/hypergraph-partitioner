@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import NewType, TypeAlias
 
-from bosonic_model.instructions import CzInstruction, InstructionType
+from bosonic_model.instructions import InstructionType
 
 QubitId = NewType("QubitId", int)
 NodeId = NewType("NodeId", int)
@@ -45,7 +45,7 @@ class LocalOp:
 @dataclass(frozen=True)
 class NonlocalCZOp:
     segment_id: SegmentId
-    instruction: CzInstruction
+    instruction: InstructionType
     control_qubit: QubitId
     target_qubit: QubitId
     control_node: NodeId

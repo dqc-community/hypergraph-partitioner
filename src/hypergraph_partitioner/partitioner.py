@@ -12,7 +12,7 @@ from fractions import Fraction
 
 from hypergraph_partitioner import config
 from hypergraph_partitioner.hgraph_builder import count_cuts, hypergraph_to_kahypar
-from hypergraph_partitioner.models.hypergraph import Hypergraph, Matching, Partition, Wire
+from hypergraph_partitioner.models.hypergraph import Hypergraph, Matching, Partition
 from hypergraph_partitioner.models.segment import Seam, SeamCompute, SeamStop, SeamValue, Segment
 
 import kahypar
@@ -184,17 +184,17 @@ def get_rho(n_wires: int, seg1: Segment, seg2: Segment, max_hedge_dist: int) -> 
 
     changing = [w for w in range(n_wires) if w in part1 and w in part2 and part1[w] != part2[w]]
 
-    def hedges(wire: Wire, spans: dict[int, list[WireSpan]]) -> int:
-        return len(spans.get(wire, []))
+    def hedges(qubit: int, spans: dict[int, list[WireSpan]]) -> int:
+        return len(spans.get(qubit, []))
 
     def total_hs(spans: dict[int, list[WireSpan]]) -> int:
         return sum(len(v) for v in spans.values())
 
-    def weight(wire: Wire, spans: dict[int, list[WireSpan]]) -> Fraction:
+    def weight(qubit: int, spans: dict[int, list[WireSpan]]) -> Fraction:
         total = total_hs(spans)
         if total == 0:
             return Fraction(0)
-        return Fraction(hedges(wire, spans), total)
+        return Fraction(hedges(qubit, spans), total)
 
     total = Fraction(0)
     for w in changing:
@@ -250,7 +250,7 @@ def match_partitions(part1: Partition, part2: Partition, k: int, n_wires: int) -
     p1 = {w: b for w, b in part1.items() if w < n_wires}
     p2 = {w: b for w, b in part2.items() if w < n_wires}
 
-    blocks1: dict[int, list[Wire]] = {b: [] for b in range(k)}
+    blocks1: dict[int, list[int]] = {b: [] for b in range(k)}
     for w, b in p1.items():
         blocks1[b].append(w)
 
@@ -262,7 +262,7 @@ def match_partitions(part1: Partition, part2: Partition, k: int, n_wires: int) -
     return _match_partitions_search(blocks1, p2, heuristic, all_blocks, initial)
 
 
-def _heuristic_cost(blocks1: dict[int, list[Wire]], part2: Partition) -> dict[int, int]:
+def _heuristic_cost(blocks1: dict[int, list[int]], part2: Partition) -> dict[int, int]:
     result: dict[int, int] = {}
     for block, wires in blocks1.items():
         if not wires:
@@ -281,7 +281,7 @@ def _heuristic_cost(blocks1: dict[int, list[Wire]], part2: Partition) -> dict[in
 
 
 def _match_partitions_search(
-    blocks1: dict[int, list[Wire]],
+    blocks1: dict[int, list[int]],
     part2: Partition,
     heuristic: dict[int, int],
     all_blocks: list[int],

@@ -4,7 +4,7 @@ from math import pi
 
 import pytest
 from bosonic_converters import CircuitConverters
-from bosonic_model import CzInstruction, DistributedCircuit, GateInstruction, UInstruction
+from bosonic_model import Condition, ConditionalInstruction, CzInstruction, DistributedCircuit, GateInstruction, UInstruction
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 from qiskit.quantum_info import DensityMatrix, partial_trace, state_fidelity
@@ -97,6 +97,33 @@ def test_annotated_to_distributed_circuit_emits_remote_cz_symbolically() -> None
     assert len(node0) == 1 and len(node1) == 1
     assert isinstance(node0[0], GateInstruction)
     assert node0[0].name == "remote_cz"
+    assert node0[0] is node1[0]
+
+
+def test_annotated_to_distributed_circuit_preserves_condition_on_remote_cz() -> None:
+    conditional_cz = ConditionalInstruction(
+        condition=Condition(cbit=0, value=True),
+        op=CzInstruction(control=0, target=1, qubits=[0, 1]),
+    )
+    segment = PartitionedSegment(
+        segment_id=SegmentId(0),
+        instructions=[conditional_cz],
+        partition={QubitId(0): NodeId(0), QubitId(1): NodeId(1)},
+    )
+    partitioned = PartitionedCircuit(
+        segments=[segment],
+        boundaries=[],
+    )
+
+    distributed = annotated_to_distributed_circuit(partitioned, qpu_data_capacity=1)
+
+    node0 = distributed.circuits[0].instructions
+    node1 = distributed.circuits[1].instructions
+    assert len(node0) == 1 and len(node1) == 1
+    assert isinstance(node0[0], ConditionalInstruction)
+    assert node0[0].condition == conditional_cz.condition
+    assert isinstance(node0[0].op, GateInstruction)
+    assert node0[0].op.name == "remote_cz"
     assert node0[0] is node1[0]
 
 

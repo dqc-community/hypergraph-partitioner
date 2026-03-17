@@ -270,7 +270,7 @@ def _annotate_segment_ops(seg: PartitionedSegment) -> Iterator[AnnotatedOp]:
             if control_node != target_node:
                 yield NonlocalCZOp(
                     segment_id=seg.segment_id,
-                    instruction=inner,
+                    instruction=inst,
                     control_qubit=control_qubit,
                     target_qubit=target_qubit,
                     control_node=control_node,

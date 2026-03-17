@@ -27,7 +27,7 @@ def test_build_hypergraph_from_qasm_interaction() -> None:
 
     hyp = build_hypergraph_from_instructions(circuit.instructions, n_qubits=2)
 
-    assert set(hyp.wires) == {0, 1}
+    assert set(hyp.qubits) == {0, 1}
     assert len(hyp.interactions) >= 1
     assert any(interaction.qubits == (0, 1) for interaction in hyp.interactions.values())
 

@@ -385,12 +385,20 @@ def _distribute_local(op: LocalOp, state: DistributionState) -> None:
 def _distribute_telegate(op: NonlocalCZOp, state: DistributionState) -> None:
     control = state.qubit_locations[int(op.control_qubit)]
     target = state.qubit_locations[int(op.target_qubit)]
-    inst = GateInstruction(
+    remote_cz = GateInstruction(
         name="remote_cz",
         qubits=[control.qubit, target.qubit],
         params=[],
         opaque=True,
     )
+    if isinstance(op.instruction, ConditionalInstruction):
+        inst = ConditionalInstruction(
+            condition=op.instruction.condition,
+            op=remote_cz,
+            qubits=list(remote_cz.qubits),
+        )
+    else:
+        inst = remote_cz
     _append_shared_instruction(
         state.circuits,
         state.instruction_index,
@@ -417,11 +425,16 @@ def _distribute_teledata(op: BoundaryTeleportOp, state: DistributionState) -> No
 
 
 def _lower_remote_cz_instruction(
-    inst: GateInstruction,
+    inst: InstructionType,
     qubits_per_node: dict[int, list[int]],
     state: ProtocolLoweringState,
 ) -> None:
-    control_qubit, target_qubit = inst.qubits[:2]
+    outer_condition = inst.condition if isinstance(inst, ConditionalInstruction) else None
+    inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
+    if not isinstance(inner, GateInstruction):
+        raise TypeError(f"expected remote_cz gate, got {type(inner).__name__}")
+
+    control_qubit, target_qubit = inner.qubits[:2]
     control_node = _node_for_qubit(control_qubit, qubits_per_node)
     target_node = _node_for_qubit(target_qubit, qubits_per_node)
     control_layout = state.qpu_layouts[control_node]
@@ -441,7 +454,7 @@ def _lower_remote_cz_instruction(
         state.circuits,
         state.instruction_index,
         (control_node, target_node),
-        remote_bell,
+        _conditionally_wrap_instruction(remote_bell, outer_condition),
         state,
     )
 
@@ -461,22 +474,45 @@ def _lower_remote_cz_instruction(
         source_final_instructions=source_suffix,
     )
     for emitted in source_prefix:
-        _append_instruction(state.circuits, state.instruction_index, control_node, emitted, state)
+        _append_instruction(
+            state.circuits,
+            state.instruction_index,
+            control_node,
+            _conditionally_wrap_instruction(emitted, outer_condition),
+            state,
+        )
     for emitted in target_body:
-        _append_instruction(state.circuits, state.instruction_index, target_node, emitted, state)
+        _append_instruction(
+            state.circuits,
+            state.instruction_index,
+            target_node,
+            _conditionally_wrap_instruction(emitted, outer_condition),
+            state,
+        )
     for emitted in source_suffix:
-        _append_instruction(state.circuits, state.instruction_index, control_node, emitted, state)
+        _append_instruction(
+            state.circuits,
+            state.instruction_index,
+            control_node,
+            _conditionally_wrap_instruction(emitted, outer_condition),
+            state,
+        )
 
     _free_comm(control_layout, comm_ctrl)
     _free_comm(target_layout, comm_tgt)
 
 
 def _lower_teleport_instruction(
-    inst: GateInstruction,
+    inst: InstructionType,
     qubits_per_node: dict[int, list[int]],
     state: ProtocolLoweringState,
 ) -> None:
-    source_qubit, destination_qubit = inst.qubits[:2]
+    outer_condition = inst.condition if isinstance(inst, ConditionalInstruction) else None
+    inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
+    if not isinstance(inner, GateInstruction):
+        raise TypeError(f"expected teleport gate, got {type(inner).__name__}")
+
+    source_qubit, destination_qubit = inner.qubits[:2]
     source_node = _node_for_qubit(source_qubit, qubits_per_node)
     destination_node = _node_for_qubit(destination_qubit, qubits_per_node)
     source_layout = state.qpu_layouts[source_node]
@@ -494,7 +530,7 @@ def _lower_teleport_instruction(
         state.circuits,
         state.instruction_index,
         (source_node, destination_node),
-        remote_bell,
+        _conditionally_wrap_instruction(remote_bell, outer_condition),
         state,
     )
 
@@ -511,9 +547,21 @@ def _lower_teleport_instruction(
         dest_instructions=destination_body,
     )
     for emitted in source_body:
-        _append_instruction(state.circuits, state.instruction_index, source_node, emitted, state)
+        _append_instruction(
+            state.circuits,
+            state.instruction_index,
+            source_node,
+            _conditionally_wrap_instruction(emitted, outer_condition),
+            state,
+        )
     for emitted in destination_body:
-        _append_instruction(state.circuits, state.instruction_index, destination_node, emitted, state)
+        _append_instruction(
+            state.circuits,
+            state.instruction_index,
+            destination_node,
+            _conditionally_wrap_instruction(emitted, outer_condition),
+            state,
+        )
 
     _free_comm(source_layout, comm_src)
 
@@ -551,11 +599,25 @@ def _finalize_circuit_registers(
 
 
 def _is_remote_cz(inst: InstructionType) -> bool:
-    return isinstance(inst, GateInstruction) and inst.name == "remote_cz"
+    inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
+    return isinstance(inner, GateInstruction) and inner.name == "remote_cz"
 
 
 def _is_teleport(inst: InstructionType) -> bool:
-    return isinstance(inst, GateInstruction) and inst.name == "teleport"
+    inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
+    return isinstance(inner, GateInstruction) and inner.name == "teleport"
+
+
+def _conditionally_wrap_instruction(
+    inst: InstructionType, condition: Condition | None
+) -> InstructionType:
+    if condition is None:
+        return inst
+    return ConditionalInstruction(
+        condition=condition,
+        op=inst,
+        qubits=list(inst.qubits),
+    )
 
 
 def _remap_instruction(
