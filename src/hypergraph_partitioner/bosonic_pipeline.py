@@ -12,9 +12,9 @@ from bosonic_model import BarrierInstruction, Circuit, ConditionalInstruction
 from bosonic_model.instructions import CzInstruction, InstructionType
 
 from hypergraph_partitioner.cz_commutation import push_cz_early
-from hypergraph_partitioner.models.annotated import (
+from hypergraph_partitioner.models.circuit_annotations import (
     AnnotatedOp,
-    BlockId,
+    NodeId,
     BoundaryId,
     BoundaryTeleportOp,
     LocalOp,
@@ -24,9 +24,9 @@ from hypergraph_partitioner.models.annotated import (
     SegmentBoundary,
     SegmentId,
     TeleportBoundary,
-    WireId,
+    QubitId,
 )
-from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, WireVertex
+from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, QubitVertex
 from hypergraph_partitioner.models.segment import SeamCompute, Segment
 from hypergraph_partitioner.partitioner import _ignore_last_seam, merge_seams, partition_hypergraph
 from hypergraph_partitioner.qiskit_normalization import normalize_to_one_qubit_and_cz
@@ -46,11 +46,11 @@ def _is_interaction(inst: InstructionType) -> bool:
     return len(qubits) >= 2
 
 
-def _interaction_wires(inst: InstructionType) -> list[int]:
+def _interaction_qubits(inst: InstructionType) -> list[int]:
     return list(getattr(_unwrap_conditional(inst), "qubits", []) or [])
 
 
-def _target_wire(inst: InstructionType) -> int | None:
+def _target_qubit(inst: InstructionType) -> int | None:
     inner = _unwrap_conditional(inst)
     qubits = list(getattr(inner, "qubits", []) or [])
     if len(qubits) == 1:
@@ -70,22 +70,22 @@ def build_hypergraph_from_instructions(
     """Build hypergraph directly from bosonic instructions."""
     del max_hedge_dist
 
-    wires = {wire_id: WireVertex(wire_id=wire_id) for wire_id in range(n_qubits)}
+    qubits = {qubit_id: QubitVertex(qubit_id=qubit_id) for qubit_id in range(n_qubits)}
     interactions: dict[int, InteractionVertex] = {}
     interaction_id = 0
 
     for position, inst in enumerate(instructions):
         if not _is_interaction(inst):
             continue
-        qubits = tuple(_interaction_wires(inst))
+        inst_qubits = tuple(_interaction_qubits(inst))
         interactions[interaction_id] = InteractionVertex(
             interaction_id=interaction_id,
             position=position,
-            qubits=qubits,
+            qubits=inst_qubits,
         )
         interaction_id += 1
 
-    return Hypergraph(wires=wires, interactions=interactions)
+    return Hypergraph(qubits=qubits, interactions=interactions)
 
 
 def _interaction_seam_pos(n: int, instructions: list[InstructionType]) -> int:
@@ -206,9 +206,9 @@ def _annotate_partitioned_circuit(segments: list[Segment]) -> PartitionedCircuit
             operations.extend(
                 BoundaryTeleportOp(
                     boundary_id=boundary.boundary_id,
-                    wire=teleport.wire,
-                    from_block=teleport.from_block,
-                    to_block=teleport.to_block,
+                    qubit=teleport.qubit,
+                    from_node=teleport.from_node,
+                    to_node=teleport.to_node,
                 )
                 for teleport in boundary.teleports
             )
@@ -224,7 +224,7 @@ def _to_partitioned_segment(seg: Segment, idx: int) -> PartitionedSegment:
     return PartitionedSegment(
         segment_id=SegmentId(idx),
         instructions=seg.gates,
-        partition={WireId(w): BlockId(b) for w, b in seg.partition.items()},
+        partition={QubitId(w): NodeId(b) for w, b in seg.partition.items()},
     )
 
 
@@ -233,12 +233,12 @@ def _build_boundary(
 ) -> SegmentBoundary:
     teleports = [
         TeleportBoundary(
-            wire=wire,
-            from_block=left.partition[wire],
-            to_block=right.partition[wire],
+            qubit=qubit,
+            from_node=left.partition[qubit],
+            to_node=right.partition[qubit],
         )
-        for wire in left.partition
-        if wire in right.partition and left.partition[wire] != right.partition[wire]
+        for qubit in left.partition
+        if qubit in right.partition and left.partition[qubit] != right.partition[qubit]
     ]
     return SegmentBoundary(
         boundary_id=BoundaryId(boundary_idx),
@@ -252,27 +252,27 @@ def _annotate_segment_ops(seg: PartitionedSegment) -> list[AnnotatedOp]:
     result: list[AnnotatedOp] = []
     for inst in seg.instructions:
         inner = _unwrap_conditional(inst)
-        qubits = tuple(_interaction_wires(inst) if _is_interaction(inst) else (getattr(inner, "qubits", []) or []))
-        blocks = tuple(seg.partition[WireId(w)] for w in qubits if WireId(w) in seg.partition)
+        qubits = tuple(_interaction_qubits(inst) if _is_interaction(inst) else (getattr(inner, "qubits", []) or []))
+        nodes = tuple(seg.partition[QubitId(w)] for w in qubits if QubitId(w) in seg.partition)
 
         if isinstance(inner, CzInstruction):
-            control_wire = WireId(inner.control)
-            target_wire = WireId(inner.target)
-            control_block = seg.partition[control_wire]
-            target_block = seg.partition[target_wire]
-            if control_block != target_block:
+            control_qubit = QubitId(inner.control)
+            target_qubit = QubitId(inner.target)
+            control_node = seg.partition[control_qubit]
+            target_node = seg.partition[target_qubit]
+            if control_node != target_node:
                 result.append(
                     NonlocalCZOp(
                         segment_id=seg.segment_id,
                         instruction=inner,
-                        control_wire=control_wire,
-                        target_wire=target_wire,
-                        control_block=control_block,
-                        target_block=target_block,
+                        control_qubit=control_qubit,
+                        target_qubit=target_qubit,
+                        control_node=control_node,
+                        target_node=target_node,
                     )
                 )
                 continue
 
-        result.append(LocalOp(segment_id=seg.segment_id, instruction=inst, blocks=blocks))
+        result.append(LocalOp(segment_id=seg.segment_id, instruction=inst, nodes=nodes))
 
     return result

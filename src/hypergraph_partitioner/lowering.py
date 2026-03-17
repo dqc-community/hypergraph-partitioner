@@ -21,7 +21,7 @@ from bosonic_model import (
 from qiskit.circuit import QuantumCircuit
 from qiskit.circuit.library import UnitaryGate
 
-from hypergraph_partitioner.models.annotated import (
+from hypergraph_partitioner.models.circuit_annotations import (
     BoundaryTeleportOp,
     LocalOp,
     NonlocalCZOp,
@@ -31,13 +31,13 @@ from hypergraph_partitioner.models.annotated import (
 
 @dataclass(frozen=True)
 class PhysicalLocation:
-    block: int
+    node: int
     qubit: int
 
 
 @dataclass
 class QpuLayout:
-    block: int
+    node: int
     data_slots: list[int]
     comm_slots: list[int]
     receiver_slots: list[int]
@@ -49,7 +49,7 @@ class QpuLayout:
 class DistributionState:
     qpu_layouts: dict[int, QpuLayout]
     circuits: dict[int, Circuit]
-    wire_locations: dict[int, PhysicalLocation]
+    qubit_locations: dict[int, PhysicalLocation]
     instruction_index: dict[int, int] = field(default_factory=dict)
     next_order: int = 0
     next_cbit: int = 0
@@ -129,9 +129,9 @@ def annotated_to_distributed_circuit(
     if not partitioned.segments:
         return DistributedCircuit(qubits_per_node={}, circuits={})
 
-    n_blocks = _num_blocks(partitioned)
+    n_nodes = _num_nodes(partitioned)
     _validate_capacity(partitioned, qpu_data_capacity)
-    state = _initialize_distribution_state(partitioned, qpu_data_capacity, n_blocks)
+    state = _initialize_distribution_state(partitioned, qpu_data_capacity, n_nodes)
 
     for op in partitioned.operations:
         if isinstance(op, LocalOp):
@@ -145,13 +145,13 @@ def annotated_to_distributed_circuit(
 
     _finalize_circuit_registers(
         state.circuits,
-        total_qubits=n_blocks * 3 * qpu_data_capacity,
+        total_qubits=n_nodes * 3 * qpu_data_capacity,
         total_cbits=state.next_cbit,
     )
     distributed = DistributedCircuit(
         qubits_per_node={
-            block: layout.data_slots + layout.comm_slots + layout.receiver_slots
-            for block, layout in state.qpu_layouts.items()
+            node: layout.data_slots + layout.comm_slots + layout.receiver_slots
+            for node, layout in state.qpu_layouts.items()
         },
         circuits=state.circuits,
     )
@@ -208,23 +208,23 @@ def to_aer_compatible_qiskit(circuit: QuantumCircuit) -> QuantumCircuit:
     return rewritten
 
 
-def _num_blocks(partitioned: PartitionedCircuit) -> int:
-    max_block = -1
+def _num_nodes(partitioned: PartitionedCircuit) -> int:
+    max_node = -1
     for seg in partitioned.segments:
-        for block in seg.partition.values():
-            max_block = max(max_block, int(block))
-    return max_block + 1 if max_block >= 0 else 0
+        for node in seg.partition.values():
+            max_node = max(max_node, int(node))
+    return max_node + 1 if max_node >= 0 else 0
 
 
 def _validate_capacity(partitioned: PartitionedCircuit, qpu_data_capacity: int) -> None:
     for seg in partitioned.segments:
-        per_block: dict[int, int] = {}
-        for block in seg.partition.values():
-            per_block[int(block)] = per_block.get(int(block), 0) + 1
-        for block, count in per_block.items():
+        per_node: dict[int, int] = {}
+        for node in seg.partition.values():
+            per_node[int(node)] = per_node.get(int(node), 0) + 1
+        for node, count in per_node.items():
             if count > qpu_data_capacity:
                 raise ValueError(
-                    f"segment {seg.segment_id} assigns {count} wires to block {block}, "
+                    f"segment {seg.segment_id} assigns {count} qubits to node {node}, "
                     f"exceeding qpu_data_capacity={qpu_data_capacity}"
                 )
 
@@ -254,37 +254,37 @@ def _max_cbit_in_instruction(inst: InstructionType) -> int:
 
 
 def _initialize_distribution_state(
-    partitioned: PartitionedCircuit, qpu_data_capacity: int, n_blocks: int
+    partitioned: PartitionedCircuit, qpu_data_capacity: int, n_nodes: int
 ) -> DistributionState:
-    qpu_layouts = _build_qpu_layouts(qpu_data_capacity, n_blocks)
-    circuits = {block: Circuit() for block in range(n_blocks)}
+    qpu_layouts = _build_qpu_layouts(qpu_data_capacity, n_nodes)
+    circuits = {node: Circuit() for node in range(n_nodes)}
 
     first_segment = partitioned.segments[0]
-    wire_locations: dict[int, PhysicalLocation] = {}
-    for block in range(n_blocks):
-        wires = sorted(
-            int(wire) for wire, owner in first_segment.partition.items() if int(owner) == block
+    qubit_locations: dict[int, PhysicalLocation] = {}
+    for node in range(n_nodes):
+        node_qubits = sorted(
+            int(q) for q, owner in first_segment.partition.items() if int(owner) == node
         )
-        for slot, wire in zip(qpu_layouts[block].data_slots, wires, strict=False):
-            wire_locations[wire] = PhysicalLocation(block=block, qubit=slot)
+        for slot, q in zip(qpu_layouts[node].data_slots, node_qubits, strict=False):
+            qubit_locations[q] = PhysicalLocation(node=node, qubit=slot)
 
     return DistributionState(
         qpu_layouts=qpu_layouts,
         circuits=circuits,
-        wire_locations=wire_locations,
+        qubit_locations=qubit_locations,
         next_cbit=_max_existing_cbit(partitioned) + 1,
     )
 
 
-def _build_qpu_layouts(qpu_data_capacity: int, n_blocks: int) -> dict[int, QpuLayout]:
+def _build_qpu_layouts(qpu_data_capacity: int, n_nodes: int) -> dict[int, QpuLayout]:
     qpu_layouts: dict[int, QpuLayout] = {}
-    for block in range(n_blocks):
-        base = block * 3 * qpu_data_capacity
+    for node in range(n_nodes):
+        base = node * 3 * qpu_data_capacity
         data_slots = list(range(base, base + qpu_data_capacity))
         comm_slots = list(range(base + qpu_data_capacity, base + 2 * qpu_data_capacity))
         receiver_slots = list(range(base + 2 * qpu_data_capacity, base + 3 * qpu_data_capacity))
-        qpu_layouts[block] = QpuLayout(
-            block=block,
+        qpu_layouts[node] = QpuLayout(
+            node=node,
             data_slots=data_slots,
             comm_slots=comm_slots,
             receiver_slots=receiver_slots,
@@ -296,17 +296,17 @@ def _build_qpu_layouts(qpu_data_capacity: int, n_blocks: int) -> dict[int, QpuLa
 
 def _layouts_from_qubits_per_node(qubits_per_node: dict[int, list[int]]) -> dict[int, QpuLayout]:
     layouts: dict[int, QpuLayout] = {}
-    for block, qubits in qubits_per_node.items():
+    for node, qubits in qubits_per_node.items():
         if len(qubits) % 3 != 0:
             raise ValueError(
-                f"node {block} has {len(qubits)} qubits; expected a multiple of 3 for data/comm/receiver layout"
+                f"node {node} has {len(qubits)} qubits; expected a multiple of 3 for data/comm/receiver layout"
             )
         capacity = len(qubits) // 3
         data_slots = list(qubits[:capacity])
         comm_slots = list(qubits[capacity : 2 * capacity])
         receiver_slots = list(qubits[2 * capacity :])
-        layouts[block] = QpuLayout(
-            block=block,
+        layouts[node] = QpuLayout(
+            node=node,
             data_slots=data_slots,
             comm_slots=comm_slots,
             receiver_slots=receiver_slots,
@@ -318,7 +318,7 @@ def _layouts_from_qubits_per_node(qubits_per_node: dict[int, list[int]]) -> dict
 
 def _alloc_comm(layout: QpuLayout) -> int:
     if not layout.free_comm:
-        raise ValueError(f"block {layout.block} has no free communication qubits")
+        raise ValueError(f"node {layout.node} has no free communication qubits")
     qubit = min(layout.free_comm)
     layout.free_comm.remove(qubit)
     return qubit
@@ -330,7 +330,7 @@ def _free_comm(layout: QpuLayout, qubit: int) -> None:
 
 def _alloc_receiver(layout: QpuLayout) -> int:
     if not layout.free_receiver:
-        raise ValueError(f"block {layout.block} has no free receiver qubits")
+        raise ValueError(f"node {layout.node} has no free receiver qubits")
     qubit = min(layout.free_receiver)
     layout.free_receiver.remove(qubit)
     return qubit
@@ -372,18 +372,18 @@ def _distribute_local(op: LocalOp, state: DistributionState) -> None:
     inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
     qubits = list(getattr(inner, "qubits", []) or [])
     qubit_map = {
-        qubit: state.wire_locations[qubit].qubit
+        qubit: state.qubit_locations[qubit].qubit
         for qubit in qubits
-        if qubit in state.wire_locations
+        if qubit in state.qubit_locations
     }
     mapped = _remap_instruction(inst, qubit_map)
-    node = state.wire_locations[qubits[0]].block if qubits else 0
+    node = state.qubit_locations[qubits[0]].node if qubits else 0
     _append_instruction(state.circuits, state.instruction_index, node, mapped, state)
 
 
 def _distribute_telegate(op: NonlocalCZOp, state: DistributionState) -> None:
-    control = state.wire_locations[int(op.control_wire)]
-    target = state.wire_locations[int(op.target_wire)]
+    control = state.qubit_locations[int(op.control_qubit)]
+    target = state.qubit_locations[int(op.target_qubit)]
     inst = GateInstruction(
         name="remote_cz",
         qubits=[control.qubit, target.qubit],
@@ -393,26 +393,26 @@ def _distribute_telegate(op: NonlocalCZOp, state: DistributionState) -> None:
     _append_shared_instruction(
         state.circuits,
         state.instruction_index,
-        (control.block, target.block),
+        (control.node, target.node),
         inst,
         state,
     )
 
 
 def _distribute_teledata(op: BoundaryTeleportOp, state: DistributionState) -> None:
-    wire = int(op.wire)
-    source = state.wire_locations[wire]
-    dst_layout = state.qpu_layouts[int(op.to_block)]
+    qubit = int(op.qubit)
+    source = state.qubit_locations[qubit]
+    dst_layout = state.qpu_layouts[int(op.to_node)]
     dst_qubit = _alloc_receiver(dst_layout)
     inst = GateInstruction(name="teleport", qubits=[source.qubit, dst_qubit], params=[], opaque=True)
     _append_shared_instruction(
         state.circuits,
         state.instruction_index,
-        (source.block, int(op.to_block)),
+        (source.node, int(op.to_node)),
         inst,
         state,
     )
-    state.wire_locations[wire] = PhysicalLocation(block=int(op.to_block), qubit=dst_qubit)
+    state.qubit_locations[qubit] = PhysicalLocation(node=int(op.to_node), qubit=dst_qubit)
 
 
 def _lower_remote_cz_instruction(

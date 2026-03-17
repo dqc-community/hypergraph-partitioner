@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
 from hypergraph_partitioner.hgraph_builder import count_cuts
-from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, WireVertex
+from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, QubitVertex
 from hypergraph_partitioner.models.segment import SeamCompute, SeamStop, SeamValue, Segment
 from hypergraph_partitioner.partitioner import (
     WireSpan,
@@ -32,7 +32,7 @@ from hypergraph_partitioner.partitioner import (
 
 def _hyp(*interactions: tuple[int, int, tuple[int, ...]], wires: tuple[int, ...] = (0, 1)) -> Hypergraph:
     return Hypergraph(
-        wires={wire_id: WireVertex(wire_id) for wire_id in wires},
+        qubits={qubit_id: QubitVertex(qubit_id) for qubit_id in wires},
         interactions={
             interaction_id: InteractionVertex(
                 interaction_id=interaction_id,
@@ -62,7 +62,7 @@ def _seg_with_hyp(
 
 
 def test_partition_hypergraph_empty_hypergraph_returns_single_block() -> None:
-    part = partition_hypergraph(Hypergraph(wires={}, interactions={}), n_qubits=3, k=2, config_path=KAHYPAR_CONFIG)
+    part = partition_hypergraph(Hypergraph(qubits={}, interactions={}), n_qubits=3, k=2, config_path=KAHYPAR_CONFIG)
 
     assert part == {0: 0, 1: 0, 2: 0}
 
@@ -338,7 +338,7 @@ def test_merge_seams_single_segment_stops() -> None:
     segs = _ignore_last_seam([_seg({0: 0, 1: 1}, SeamCompute())])
 
     result = merge_seams(
-        lambda _g: Hypergraph(wires={}, interactions={}),
+        lambda _g: Hypergraph(qubits={}, interactions={}),
         lambda _h: {0: 0, 1: 1},
         k=2,
         n_wires=2,

@@ -6,8 +6,8 @@ from fractions import Fraction
 
 from bosonic_model.instructions import UInstruction
 
-from hypergraph_partitioner.models.annotated import (
-    BlockId,
+from hypergraph_partitioner.models.circuit_annotations import (
+    NodeId,
     BoundaryId,
     BoundaryTeleportOp,
     LocalOp,
@@ -16,29 +16,29 @@ from hypergraph_partitioner.models.annotated import (
     SegmentBoundary,
     SegmentId,
     TeleportBoundary,
-    WireId,
+    QubitId,
 )
-from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, WireVertex
+from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, QubitVertex
 from hypergraph_partitioner.models.segment import SeamCompute, SeamStop, SeamValue, Segment
 
 
-def test_hypergraph_wire_to_interactions_indexes_by_wire() -> None:
+def test_hypergraph_qubit_to_interactions_indexes_by_wire() -> None:
     hyp = Hypergraph(
-        wires={0: WireVertex(0), 1: WireVertex(1), 2: WireVertex(2)},
+        wires={0: QubitVertex(0), 1: QubitVertex(1), 2: QubitVertex(2)},
         interactions={
             10: InteractionVertex(interaction_id=10, position=5, qubits=(0, 1)),
             11: InteractionVertex(interaction_id=11, position=9, qubits=(1, 2)),
         },
     )
 
-    assert hyp.wire_to_interactions == {0: [10], 1: [10, 11], 2: [11]}
+    assert hyp.qubit_to_interactions == {0: [10], 1: [10, 11], 2: [11]}
 
 
 def test_segment_defaults() -> None:
     seg = Segment()
 
     assert seg.gates == []
-    assert seg.hypergraph == Hypergraph(wires={}, interactions={})
+    assert seg.hypergraph == Hypergraph(qubits={}, interactions={})
     assert seg.partition == {}
     assert isinstance(seg.seam, SeamCompute)
 
@@ -57,9 +57,9 @@ def test_partitioned_circuit_model_roundtrip() -> None:
     segment = PartitionedSegment(
         segment_id=SegmentId(0),
         instructions=[inst],
-        partition={WireId(0): BlockId(1)},
+        partition={QubitId(0): NodeId(1)},
     )
-    teleport = TeleportBoundary(wire=WireId(0), from_block=BlockId(0), to_block=BlockId(1))
+    teleport = TeleportBoundary(wire=QubitId(0), from_node=NodeId(0), to_node=NodeId(1))
     boundary = SegmentBoundary(
         boundary_id=BoundaryId(0),
         left_segment_id=SegmentId(0),
@@ -68,14 +68,14 @@ def test_partitioned_circuit_model_roundtrip() -> None:
     )
     op = BoundaryTeleportOp(
         boundary_id=BoundaryId(0),
-        wire=WireId(0),
-        from_block=BlockId(0),
-        to_block=BlockId(1),
+        wire=QubitId(0),
+        from_node=NodeId(0),
+        to_node=NodeId(1),
     )
     result = PartitionedCircuit(segments=[segment], boundaries=[boundary], operations=[op])
 
-    assert result.segments[0].partition[WireId(0)] == BlockId(1)
-    assert result.boundaries[0].teleports[0].to_block == BlockId(1)
+    assert result.segments[0].partition[QubitId(0)] == NodeId(1)
+    assert result.boundaries[0].teleports[0].to_node == NodeId(1)
     assert result.operations[0] == op
 
 
@@ -84,7 +84,7 @@ def test_local_op_blocks_preserve_block_ids() -> None:
     op = LocalOp(
         segment_id=SegmentId(0),
         instruction=inst,
-        blocks=(BlockId(2),),
+        nodes=(NodeId(2),),
     )
 
-    assert op.blocks == (BlockId(2),)
+    assert op.nodes == (NodeId(2),)

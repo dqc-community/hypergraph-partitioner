@@ -10,7 +10,7 @@ from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 from qiskit.quantum_info import Statevector
 
-from hypergraph_partitioner.models.annotated import BoundaryTeleportOp, PartitionedCircuit
+from hypergraph_partitioner.models.circuit_annotations import BoundaryTeleportOp, PartitionedCircuit
 
 
 INPUT_STATES = ("0", "1", "+", "+i")
@@ -60,7 +60,7 @@ def assert_statevectors_equivalent(actual: Statevector, expected: Statevector) -
 
 
 def num_blocks(partitioned: PartitionedCircuit) -> int:
-    return max(int(block) for seg in partitioned.segments for block in seg.partition.values()) + 1
+    return max(int(node) for seg in partitioned.segments for block in seg.partition.values()) + 1
 
 
 def initial_wire_locations(
@@ -69,14 +69,14 @@ def initial_wire_locations(
     n_blocks = num_blocks(partitioned)
     first_segment = partitioned.segments[0]
     locations: dict[int, int] = {}
-    for block in range(n_blocks):
+    for node in range(n_blocks):
         wires = sorted(
             int(wire) for wire, owner in first_segment.partition.items() if int(owner) == block
         )
-        base = block * 3 * qpu_data_capacity
+        base = node * 3 * qpu_data_capacity
         data_slots = list(range(base, base + qpu_data_capacity))
         for slot, wire in zip(data_slots, wires, strict=False):
-            locations[wire] = slot
+            locations[qubit] = slot
     return locations
 
 
@@ -88,19 +88,19 @@ def final_wire_locations(
     free_receivers = {
         block: set(
             range(
-                block * 3 * qpu_data_capacity + 2 * qpu_data_capacity,
-                (block + 1) * 3 * qpu_data_capacity,
+                node * 3 * qpu_data_capacity + 2 * qpu_data_capacity,
+                (node + 1) * 3 * qpu_data_capacity,
             )
         )
-        for block in range(n_blocks)
+        for node in range(n_blocks)
     }
     for op in partitioned.operations:
         if not isinstance(op, BoundaryTeleportOp):
             continue
-        destination_block = int(op.to_block)
-        destination = min(free_receivers[destination_block])
-        free_receivers[destination_block].remove(destination)
-        locations[int(op.wire)] = destination
+        destination_node = int(op.to_node)
+        destination = min(free_receivers[destination_node])
+        free_receivers[destination_node].remove(destination)
+        locations[int(op.qubit)] = destination
     return locations
 
 

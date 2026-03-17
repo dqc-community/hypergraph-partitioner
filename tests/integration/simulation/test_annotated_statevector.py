@@ -12,7 +12,7 @@ from hypergraph_partitioner import (
     partition_circuit,
 )
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
-from hypergraph_partitioner.models.annotated import PartitionedCircuit
+from hypergraph_partitioner.models.circuit_annotations import PartitionedCircuit
 from tests.integration.simulation.statevector_test_utils import (
     INPUT_STATES,
     assert_statevectors_equivalent,

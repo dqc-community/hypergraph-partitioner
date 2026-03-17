@@ -10,7 +10,7 @@ from hypergraph_partitioner.lowering import (
     annotated_to_distributed_circuit,
     lower_distributed_circuit,
 )
-from hypergraph_partitioner.models.annotated import (
+from hypergraph_partitioner.models.circuit_annotations import (
     AnnotatedOp,
     BoundaryTeleportOp,
     LocalOp,

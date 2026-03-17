@@ -34,7 +34,7 @@ Seam = Annotated[
 class Segment(BaseModel):
     # Instruction payloads for this segment (bosonic_model instructions).
     gates: list[object] = Field(default_factory=list)
-    hypergraph: Hypergraph = Field(default_factory=lambda: Hypergraph(wires={}, interactions={}))
+    hypergraph: Hypergraph = Field(default_factory=lambda: Hypergraph(qubits={}, interactions={}))
     partition: dict[Wire, int] = Field(default_factory=dict)
     seam: Seam = Field(default_factory=SeamCompute)
     wire_range: tuple[int, int] = (0, 0)

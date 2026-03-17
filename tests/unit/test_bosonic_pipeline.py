@@ -24,7 +24,7 @@ from hypergraph_partitioner.bosonic_pipeline import (
 )
 from hypergraph_partitioner.cz_commutation import push_cz_early
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
-from hypergraph_partitioner.models.annotated import (
+from hypergraph_partitioner.models.circuit_annotations import (
     BoundaryTeleportOp,
     NonlocalCZOp,
     PartitionedCircuit,
@@ -293,8 +293,8 @@ def test_preprocess_step2_keeps_wire_interactions_in_circuit_order() -> None:
 
     assert len(step1_hyp.interactions) == 2
     assert len(preprocessed_hyp.interactions) == 2
-    assert step1_hyp.wire_to_interactions[0] == [0, 1]
-    assert preprocessed_hyp.wire_to_interactions[0] == [0, 1]
+    assert step1_hyp.qubit_to_interactions[0] == [0, 1]
+    assert preprocessed_hyp.qubit_to_interactions[0] == [0, 1]
 
 
 def test_preprocess_step2_preserves_circuit_unitary() -> None:
@@ -402,7 +402,7 @@ def test_partition_circuit_end_to_end_annotates_nonlocal_czs() -> None:
     assert len(result.segments) >= 1
     assert len(result.boundaries) == max(0, len(result.segments) - 1)
     assert len(nonlocal_ops) >= 1
-    assert all(op.control_block != op.target_block for op in nonlocal_ops)
+    assert all(op.control_node != op.target_node for op in nonlocal_ops)
 
 
 def test_real_circuit_initial_segments_annotate_multiple_segments_and_teleports() -> None:

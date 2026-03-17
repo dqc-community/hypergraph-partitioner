@@ -14,8 +14,8 @@ from hypergraph_partitioner import (
     lower_distributed_circuit,
 )
 from hypergraph_partitioner.lowering import to_aer_compatible_qiskit
-from hypergraph_partitioner.models.annotated import (
-    BlockId,
+from hypergraph_partitioner.models.circuit_annotations import (
+    NodeId,
     BoundaryId,
     BoundaryTeleportOp,
     LocalOp,
@@ -23,7 +23,7 @@ from hypergraph_partitioner.models.annotated import (
     PartitionedCircuit,
     PartitionedSegment,
     SegmentId,
-    WireId,
+    QubitId,
 )
 
 
@@ -63,12 +63,12 @@ def test_annotated_to_distributed_circuit_converts_local_ops_only() -> None:
     segment = PartitionedSegment(
         segment_id=SegmentId(0),
         instructions=[inst],
-        partition={WireId(0): BlockId(0)},
+        partition={QubitId(0): NodeId(0)},
     )
     partitioned = PartitionedCircuit(
         segments=[segment],
         boundaries=[],
-        operations=[LocalOp(segment_id=SegmentId(0), instruction=inst, blocks=(BlockId(0),))],
+        operations=[LocalOp(segment_id=SegmentId(0), instruction=inst, nodes=(NodeId(0),))],
     )
 
     distributed = annotated_to_distributed_circuit(partitioned, qpu_data_capacity=1)
@@ -85,7 +85,7 @@ def test_annotated_to_distributed_circuit_emits_remote_cz_symbolically() -> None
     segment = PartitionedSegment(
         segment_id=SegmentId(0),
         instructions=[cz],
-        partition={WireId(0): BlockId(0), WireId(1): BlockId(1)},
+        partition={QubitId(0): NodeId(0), QubitId(1): NodeId(1)},
     )
     partitioned = PartitionedCircuit(
         segments=[segment],
@@ -94,10 +94,10 @@ def test_annotated_to_distributed_circuit_emits_remote_cz_symbolically() -> None
             NonlocalCZOp(
                 segment_id=SegmentId(0),
                 instruction=cz,
-                control_wire=WireId(0),
-                target_wire=WireId(1),
-                control_block=BlockId(0),
-                target_block=BlockId(1),
+                control_qubit=QubitId(0),
+                target_qubit=QubitId(1),
+                control_node=NodeId(0),
+                target_node=NodeId(1),
             )
         ],
     )
@@ -117,12 +117,12 @@ def test_annotated_to_distributed_circuit_emits_teleport_and_updates_destination
     left = PartitionedSegment(
         segment_id=SegmentId(0),
         instructions=[],
-        partition={WireId(0): BlockId(0)},
+        partition={QubitId(0): NodeId(0)},
     )
     right = PartitionedSegment(
         segment_id=SegmentId(1),
         instructions=[z_after],
-        partition={WireId(0): BlockId(1)},
+        partition={QubitId(0): NodeId(1)},
     )
     partitioned = PartitionedCircuit(
         segments=[left, right],
@@ -130,11 +130,11 @@ def test_annotated_to_distributed_circuit_emits_teleport_and_updates_destination
         operations=[
             BoundaryTeleportOp(
                 boundary_id=BoundaryId(0),
-                wire=WireId(0),
-                from_block=BlockId(0),
-                to_block=BlockId(1),
+                wire=QubitId(0),
+                from_node=NodeId(0),
+                to_node=NodeId(1),
             ),
-            LocalOp(segment_id=SegmentId(1), instruction=z_after, blocks=(BlockId(1),)),
+            LocalOp(segment_id=SegmentId(1), instruction=z_after, nodes=(NodeId(1),)),
         ],
     )
 
@@ -153,25 +153,25 @@ def test_annotated_to_distributed_circuit_preserves_operation_order() -> None:
     left = PartitionedSegment(
         segment_id=SegmentId(0),
         instructions=[prep],
-        partition={WireId(0): BlockId(0)},
+        partition={QubitId(0): NodeId(0)},
     )
     right = PartitionedSegment(
         segment_id=SegmentId(1),
         instructions=[post],
-        partition={WireId(0): BlockId(1)},
+        partition={QubitId(0): NodeId(1)},
     )
     partitioned = PartitionedCircuit(
         segments=[left, right],
         boundaries=[],
         operations=[
-            LocalOp(segment_id=SegmentId(0), instruction=prep, blocks=(BlockId(0),)),
+            LocalOp(segment_id=SegmentId(0), instruction=prep, nodes=(NodeId(0),)),
             BoundaryTeleportOp(
                 boundary_id=BoundaryId(0),
-                wire=WireId(0),
-                from_block=BlockId(0),
-                to_block=BlockId(1),
+                wire=QubitId(0),
+                from_node=NodeId(0),
+                to_node=NodeId(1),
             ),
-            LocalOp(segment_id=SegmentId(1), instruction=post, blocks=(BlockId(1),)),
+            LocalOp(segment_id=SegmentId(1), instruction=post, nodes=(NodeId(1),)),
         ],
     )
 
@@ -187,7 +187,7 @@ def test_annotated_to_distributed_circuit_rejects_segments_exceeding_capacity() 
     segment = PartitionedSegment(
         segment_id=SegmentId(0),
         instructions=[],
-        partition={WireId(0): BlockId(0), WireId(1): BlockId(0)},
+        partition={QubitId(0): NodeId(0), QubitId(1): NodeId(0)},
     )
     partitioned = PartitionedCircuit(segments=[segment], boundaries=[], operations=[])
 
@@ -202,24 +202,24 @@ def test_lower_distributed_circuit_telegate_matches_ideal_cz() -> None:
     segment = PartitionedSegment(
         segment_id=SegmentId(0),
         instructions=[*prep0, *prep1, cz],
-        partition={WireId(0): BlockId(0), WireId(1): BlockId(1)},
+        partition={QubitId(0): NodeId(0), QubitId(1): NodeId(1)},
     )
     ops = [
         *[
-            LocalOp(segment_id=SegmentId(0), instruction=inst, blocks=(BlockId(0),))
+            LocalOp(segment_id=SegmentId(0), instruction=inst, nodes=(NodeId(0),))
             for inst in prep0
         ],
         *[
-            LocalOp(segment_id=SegmentId(0), instruction=inst, blocks=(BlockId(1),))
+            LocalOp(segment_id=SegmentId(0), instruction=inst, nodes=(NodeId(1),))
             for inst in prep1
         ],
         NonlocalCZOp(
             segment_id=SegmentId(0),
             instruction=cz,
-            control_wire=WireId(0),
-            target_wire=WireId(1),
-            control_block=BlockId(0),
-            target_block=BlockId(1),
+            control_qubit=QubitId(0),
+            target_qubit=QubitId(1),
+            control_node=NodeId(0),
+            target_node=NodeId(1),
         ),
     ]
     partitioned = PartitionedCircuit(segments=[segment], boundaries=[], operations=ops)
@@ -246,23 +246,23 @@ def test_lower_distributed_circuit_teledata_matches_ideal_state_transfer() -> No
     left = PartitionedSegment(
         segment_id=SegmentId(0),
         instructions=prep,
-        partition={WireId(0): BlockId(0)},
+        partition={QubitId(0): NodeId(0)},
     )
     right = PartitionedSegment(
         segment_id=SegmentId(1),
         instructions=[],
-        partition={WireId(0): BlockId(1)},
+        partition={QubitId(0): NodeId(1)},
     )
     ops = [
         *[
-            LocalOp(segment_id=SegmentId(0), instruction=inst, blocks=(BlockId(0),))
+            LocalOp(segment_id=SegmentId(0), instruction=inst, nodes=(NodeId(0),))
             for inst in prep
         ],
         BoundaryTeleportOp(
             boundary_id=BoundaryId(0),
-            wire=WireId(0),
-            from_block=BlockId(0),
-            to_block=BlockId(1),
+            wire=QubitId(0),
+            from_node=NodeId(0),
+            to_node=NodeId(1),
         ),
     ]
     partitioned = PartitionedCircuit(segments=[left, right], boundaries=[], operations=ops)

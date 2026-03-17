@@ -10,7 +10,7 @@ from hypergraph_partitioner.hgraph_builder import (
     count_cuts,
     hypergraph_to_kahypar,
 )
-from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, WireVertex
+from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, QubitVertex
 from hypergraph_partitioner.models.segment import SeamStop, Segment
 
 
@@ -54,16 +54,16 @@ def test_count_cuts_detects_cut() -> None:
 
 def test_build_interaction_to_wires_tracks_incident_real_wires() -> None:
     hyp = Hypergraph(
-        wires={0: WireVertex(0), 1: WireVertex(1)},
+        qubits={0: QubitVertex(0), 1: QubitVertex(1)},
         interactions={0: InteractionVertex(interaction_id=0, position=0, qubits=(0, 1))},
     )
 
     assert build_interaction_to_wires(hyp) == {0: {0, 1}}
 
 
-def test_hypergraph_wire_to_interactions_orders_by_position() -> None:
+def test_hypergraph_qubit_to_interactions_orders_by_position() -> None:
     hyp = Hypergraph(
-        wires={0: WireVertex(0), 1: WireVertex(1), 2: WireVertex(2), 3: WireVertex(3)},
+        qubits={0: QubitVertex(0), 1: QubitVertex(1), 2: QubitVertex(2), 3: QubitVertex(3)},
         interactions={
             3: InteractionVertex(interaction_id=3, position=2, qubits=(1, 3)),
             1: InteractionVertex(interaction_id=1, position=0, qubits=(0, 1)),
@@ -71,12 +71,12 @@ def test_hypergraph_wire_to_interactions_orders_by_position() -> None:
         },
     )
 
-    assert hyp.wire_to_interactions == {0: [1], 1: [1, 2, 3], 2: [2], 3: [3]}
+    assert hyp.qubit_to_interactions == {0: [1], 1: [1, 2, 3], 2: [2], 3: [3]}
 
 
 def test_hypergraph_to_kahypar_reconstructs_interaction_nets() -> None:
     hyp = Hypergraph(
-        wires={0: WireVertex(0), 1: WireVertex(1), 2: WireVertex(2), 3: WireVertex(3)},
+        qubits={0: QubitVertex(0), 1: QubitVertex(1), 2: QubitVertex(2), 3: QubitVertex(3)},
         interactions={
             1: InteractionVertex(interaction_id=1, position=0, qubits=(1, 3)),
             2: InteractionVertex(interaction_id=2, position=1, qubits=(1, 2)),

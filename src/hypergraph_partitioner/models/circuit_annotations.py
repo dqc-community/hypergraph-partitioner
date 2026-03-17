@@ -7,8 +7,8 @@ from typing import NewType, TypeAlias
 
 from bosonic_model.instructions import CzInstruction, InstructionType
 
-WireId = NewType("WireId", int)
-BlockId = NewType("BlockId", int)
+QubitId = NewType("QubitId", int)
+NodeId = NewType("NodeId", int)
 SegmentId = NewType("SegmentId", int)
 BoundaryId = NewType("BoundaryId", int)
 
@@ -17,14 +17,14 @@ BoundaryId = NewType("BoundaryId", int)
 class PartitionedSegment:
     segment_id: SegmentId
     instructions: list[InstructionType]
-    partition: dict[WireId, BlockId]
+    partition: dict[QubitId, NodeId]
 
 
 @dataclass(frozen=True)
 class TeleportBoundary:
-    wire: WireId
-    from_block: BlockId
-    to_block: BlockId
+    qubit: QubitId
+    from_node: NodeId
+    to_node: NodeId
 
 
 @dataclass(frozen=True)
@@ -39,25 +39,25 @@ class SegmentBoundary:
 class LocalOp:
     segment_id: SegmentId
     instruction: InstructionType
-    blocks: tuple[BlockId, ...]
+    nodes: tuple[NodeId, ...]
 
 
 @dataclass(frozen=True)
 class NonlocalCZOp:
     segment_id: SegmentId
     instruction: CzInstruction
-    control_wire: WireId
-    target_wire: WireId
-    control_block: BlockId
-    target_block: BlockId
+    control_qubit: QubitId
+    target_qubit: QubitId
+    control_node: NodeId
+    target_node: NodeId
 
 
 @dataclass(frozen=True)
 class BoundaryTeleportOp:
     boundary_id: BoundaryId
-    wire: WireId
-    from_block: BlockId
-    to_block: BlockId
+    qubit: QubitId
+    from_node: NodeId
+    to_node: NodeId
 
 
 AnnotatedOp: TypeAlias = LocalOp | NonlocalCZOp | BoundaryTeleportOp

@@ -6,15 +6,15 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TypeAlias
 
-Wire: TypeAlias = int
+Qubit: TypeAlias = int
 Interaction: TypeAlias = int
-Partition: TypeAlias = dict[Wire, int]
+Partition: TypeAlias = dict[Qubit, int]
 Matching: TypeAlias = dict[int, int]
 
 
 @dataclass(frozen=True)
-class WireVertex:
-    wire_id: int
+class QubitVertex:
+    qubit_id: int
 
 
 @dataclass(frozen=True)
@@ -26,16 +26,16 @@ class InteractionVertex:
 
 @dataclass
 class Hypergraph:
-    wires: dict[int, WireVertex]
+    qubits: dict[int, QubitVertex]
     interactions: dict[int, InteractionVertex]
 
     @cached_property
-    def wire_to_interactions(self) -> dict[int, list[int]]:
-        result: dict[int, list[int]] = {wire_id: [] for wire_id in self.wires}
+    def qubit_to_interactions(self) -> dict[int, list[int]]:
+        result: dict[int, list[int]] = {qubit_id: [] for qubit_id in self.qubits}
 
         for interaction_id, interaction in self.interactions.items():
-            for wire_id in interaction.qubits:
-                result.setdefault(wire_id, []).append(interaction_id)
+            for qubit_id in interaction.qubits:
+                result.setdefault(qubit_id, []).append(interaction_id)
 
         for interaction_ids in result.values():
             interaction_ids.sort(key=lambda i: self.interactions[i].position)
