@@ -6,7 +6,7 @@ runtime data flow to bosonic_model instructions.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 
 from bosonic_model import BarrierInstruction, Circuit, ConditionalInstruction
 from bosonic_model.instructions import CzInstruction, InstructionType
@@ -65,11 +65,9 @@ def prepare_instructions(instructions: Iterable[InstructionType]) -> list[Instru
 
 
 def build_hypergraph_from_instructions(
-    instructions: list[InstructionType], n_qubits: int, max_hedge_dist: int
+    instructions: list[InstructionType], n_qubits: int
 ) -> Hypergraph:
     """Build hypergraph directly from bosonic instructions."""
-    del max_hedge_dist
-
     qubits = {qubit_id: QubitVertex(qubit_id=qubit_id) for qubit_id in range(n_qubits)}
     interactions: dict[int, InteractionVertex] = {}
     interaction_id = 0
@@ -124,7 +122,7 @@ def _initial_segments(
         this_insts = remaining[:split]
         remaining = remaining[split:]
 
-        hyp = build_hypergraph_from_instructions(this_insts, n_qubits, max_hedge_dist)
+        hyp = build_hypergraph_from_instructions(this_insts, n_qubits)
         part = partition_hypergraph(hyp, n_qubits, k, config_path)
 
         segments.append(
@@ -165,7 +163,7 @@ def partition_circuit(
     initial = _ignore_last_seam(initial)
 
     def to_hyp(insts: list[InstructionType]) -> Hypergraph:
-        return build_hypergraph_from_instructions(insts, n_qubits, max_hedge_dist)
+        return build_hypergraph_from_instructions(insts, n_qubits)
 
     def to_part(hyp: Hypergraph) -> dict[int, int]:
         return partition_hypergraph(hyp, n_qubits, k, config_path)
@@ -182,7 +180,7 @@ def _preprocess(circuit: Circuit) -> Circuit:
 
 
 def count_nonlocal_interactions(circuit: PartitionedCircuit) -> int:
-    return sum(isinstance(op, NonlocalCZOp) for op in circuit.operations)
+    return sum(isinstance(op, NonlocalCZOp) for op in iter_annotated_operations(circuit))
 
 
 def count_interactions(instructions: Iterable[InstructionType]) -> int:
@@ -194,29 +192,18 @@ def count_teleports(circuit: PartitionedCircuit) -> int:
 
 
 def _annotate_partitioned_circuit(segments: list[Segment]) -> PartitionedCircuit:
+    """Add the appropriate telegate and teledata annotations to the partitioned segments and boundaries."""
     public_segments = [_to_partitioned_segment(seg, idx) for idx, seg in enumerate(segments)]
     boundaries: list[SegmentBoundary] = []
-    operations: list[AnnotatedOp] = []
 
     for idx, seg in enumerate(public_segments):
-        operations.extend(_annotate_segment_ops(seg))
         if idx + 1 < len(public_segments):
             boundary = _build_boundary(seg, public_segments[idx + 1], idx)
             boundaries.append(boundary)
-            operations.extend(
-                BoundaryTeleportOp(
-                    boundary_id=boundary.boundary_id,
-                    qubit=teleport.qubit,
-                    from_node=teleport.from_node,
-                    to_node=teleport.to_node,
-                )
-                for teleport in boundary.teleports
-            )
 
     return PartitionedCircuit(
         segments=public_segments,
         boundaries=boundaries,
-        operations=operations,
     )
 
 
@@ -248,8 +235,28 @@ def _build_boundary(
     )
 
 
-def _annotate_segment_ops(seg: PartitionedSegment) -> list[AnnotatedOp]:
-    result: list[AnnotatedOp] = []
+def iter_annotated_operations(circuit: PartitionedCircuit) -> Iterator[AnnotatedOp]:
+    if len(circuit.boundaries) != max(0, len(circuit.segments) - 1):
+        raise ValueError("partitioned circuit must have exactly one boundary between adjacent segments")
+
+    for idx, seg in enumerate(circuit.segments):
+        yield from _annotate_segment_ops(seg)
+        if idx < len(circuit.boundaries):
+            boundary = circuit.boundaries[idx]
+            expected_left = circuit.segments[idx].segment_id
+            expected_right = circuit.segments[idx + 1].segment_id
+            if boundary.left_segment_id != expected_left or boundary.right_segment_id != expected_right:
+                raise ValueError("partitioned circuit boundaries must align with adjacent segment ordering")
+            for teleport in boundary.teleports:
+                yield BoundaryTeleportOp(
+                    boundary_id=boundary.boundary_id,
+                    qubit=teleport.qubit,
+                    from_node=teleport.from_node,
+                    to_node=teleport.to_node,
+                )
+
+
+def _annotate_segment_ops(seg: PartitionedSegment) -> Iterator[AnnotatedOp]:
     for inst in seg.instructions:
         inner = _unwrap_conditional(inst)
         qubits = tuple(_interaction_qubits(inst) if _is_interaction(inst) else (getattr(inner, "qubits", []) or []))
@@ -261,18 +268,14 @@ def _annotate_segment_ops(seg: PartitionedSegment) -> list[AnnotatedOp]:
             control_node = seg.partition[control_qubit]
             target_node = seg.partition[target_qubit]
             if control_node != target_node:
-                result.append(
-                    NonlocalCZOp(
-                        segment_id=seg.segment_id,
-                        instruction=inner,
-                        control_qubit=control_qubit,
-                        target_qubit=target_qubit,
-                        control_node=control_node,
-                        target_node=target_node,
-                    )
+                yield NonlocalCZOp(
+                    segment_id=seg.segment_id,
+                    instruction=inner,
+                    control_qubit=control_qubit,
+                    target_qubit=target_qubit,
+                    control_node=control_node,
+                    target_node=target_node,
                 )
                 continue
 
-        result.append(LocalOp(segment_id=seg.segment_id, instruction=inst, nodes=nodes))
-
-    return result
+        yield LocalOp(segment_id=seg.segment_id, instruction=inst, nodes=nodes)

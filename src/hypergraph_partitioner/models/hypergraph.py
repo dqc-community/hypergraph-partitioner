@@ -6,9 +6,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TypeAlias
 
-Qubit: TypeAlias = int
-Interaction: TypeAlias = int
-Partition: TypeAlias = dict[Qubit, int]
+Partition: TypeAlias = dict[int, int]
 Matching: TypeAlias = dict[int, int]
 
 

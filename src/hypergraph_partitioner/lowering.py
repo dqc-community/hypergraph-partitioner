@@ -21,6 +21,7 @@ from bosonic_model import (
 from qiskit.circuit import QuantumCircuit
 from qiskit.circuit.library import UnitaryGate
 
+from hypergraph_partitioner.bosonic_pipeline import iter_annotated_operations
 from hypergraph_partitioner.models.circuit_annotations import (
     BoundaryTeleportOp,
     LocalOp,
@@ -133,7 +134,7 @@ def annotated_to_distributed_circuit(
     _validate_capacity(partitioned, qpu_data_capacity)
     state = _initialize_distribution_state(partitioned, qpu_data_capacity, n_nodes)
 
-    for op in partitioned.operations:
+    for op in iter_annotated_operations(partitioned):
         if isinstance(op, LocalOp):
             _distribute_local(op, state)
         elif isinstance(op, NonlocalCZOp):
@@ -231,7 +232,7 @@ def _validate_capacity(partitioned: PartitionedCircuit, qpu_data_capacity: int) 
 
 def _max_existing_cbit(partitioned: PartitionedCircuit) -> int:
     maximum = -1
-    for op in partitioned.operations:
+    for op in iter_annotated_operations(partitioned):
         if isinstance(op, LocalOp):
             maximum = max(maximum, _max_cbit_in_instruction(op.instruction))
     return maximum

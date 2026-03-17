@@ -17,11 +17,10 @@ from hypergraph_partitioner.lowering import to_aer_compatible_qiskit
 from hypergraph_partitioner.models.circuit_annotations import (
     NodeId,
     BoundaryId,
-    BoundaryTeleportOp,
-    LocalOp,
-    NonlocalCZOp,
     PartitionedCircuit,
     PartitionedSegment,
+    SegmentBoundary,
+    TeleportBoundary,
     SegmentId,
     QubitId,
 )
@@ -68,7 +67,6 @@ def test_annotated_to_distributed_circuit_converts_local_ops_only() -> None:
     partitioned = PartitionedCircuit(
         segments=[segment],
         boundaries=[],
-        operations=[LocalOp(segment_id=SegmentId(0), instruction=inst, nodes=(NodeId(0),))],
     )
 
     distributed = annotated_to_distributed_circuit(partitioned, qpu_data_capacity=1)
@@ -90,16 +88,6 @@ def test_annotated_to_distributed_circuit_emits_remote_cz_symbolically() -> None
     partitioned = PartitionedCircuit(
         segments=[segment],
         boundaries=[],
-        operations=[
-            NonlocalCZOp(
-                segment_id=SegmentId(0),
-                instruction=cz,
-                control_qubit=QubitId(0),
-                target_qubit=QubitId(1),
-                control_node=NodeId(0),
-                target_node=NodeId(1),
-            )
-        ],
     )
 
     distributed = annotated_to_distributed_circuit(partitioned, qpu_data_capacity=1)
@@ -126,15 +114,19 @@ def test_annotated_to_distributed_circuit_emits_teleport_and_updates_destination
     )
     partitioned = PartitionedCircuit(
         segments=[left, right],
-        boundaries=[],
-        operations=[
-            BoundaryTeleportOp(
+        boundaries=[
+            SegmentBoundary(
                 boundary_id=BoundaryId(0),
-                wire=QubitId(0),
-                from_node=NodeId(0),
-                to_node=NodeId(1),
-            ),
-            LocalOp(segment_id=SegmentId(1), instruction=z_after, nodes=(NodeId(1),)),
+                left_segment_id=SegmentId(0),
+                right_segment_id=SegmentId(1),
+                teleports=[
+                    TeleportBoundary(
+                        qubit=QubitId(0),
+                        from_node=NodeId(0),
+                        to_node=NodeId(1),
+                    )
+                ],
+            )
         ],
     )
 
@@ -162,16 +154,19 @@ def test_annotated_to_distributed_circuit_preserves_operation_order() -> None:
     )
     partitioned = PartitionedCircuit(
         segments=[left, right],
-        boundaries=[],
-        operations=[
-            LocalOp(segment_id=SegmentId(0), instruction=prep, nodes=(NodeId(0),)),
-            BoundaryTeleportOp(
+        boundaries=[
+            SegmentBoundary(
                 boundary_id=BoundaryId(0),
-                wire=QubitId(0),
-                from_node=NodeId(0),
-                to_node=NodeId(1),
-            ),
-            LocalOp(segment_id=SegmentId(1), instruction=post, nodes=(NodeId(1),)),
+                left_segment_id=SegmentId(0),
+                right_segment_id=SegmentId(1),
+                teleports=[
+                    TeleportBoundary(
+                        qubit=QubitId(0),
+                        from_node=NodeId(0),
+                        to_node=NodeId(1),
+                    )
+                ],
+            )
         ],
     )
 
@@ -189,7 +184,7 @@ def test_annotated_to_distributed_circuit_rejects_segments_exceeding_capacity() 
         instructions=[],
         partition={QubitId(0): NodeId(0), QubitId(1): NodeId(0)},
     )
-    partitioned = PartitionedCircuit(segments=[segment], boundaries=[], operations=[])
+    partitioned = PartitionedCircuit(segments=[segment], boundaries=[])
 
     with pytest.raises(ValueError, match="exceeding qpu_data_capacity"):
         annotated_to_distributed_circuit(partitioned, qpu_data_capacity=1)
@@ -204,25 +199,7 @@ def test_lower_distributed_circuit_telegate_matches_ideal_cz() -> None:
         instructions=[*prep0, *prep1, cz],
         partition={QubitId(0): NodeId(0), QubitId(1): NodeId(1)},
     )
-    ops = [
-        *[
-            LocalOp(segment_id=SegmentId(0), instruction=inst, nodes=(NodeId(0),))
-            for inst in prep0
-        ],
-        *[
-            LocalOp(segment_id=SegmentId(0), instruction=inst, nodes=(NodeId(1),))
-            for inst in prep1
-        ],
-        NonlocalCZOp(
-            segment_id=SegmentId(0),
-            instruction=cz,
-            control_qubit=QubitId(0),
-            target_qubit=QubitId(1),
-            control_node=NodeId(0),
-            target_node=NodeId(1),
-        ),
-    ]
-    partitioned = PartitionedCircuit(segments=[segment], boundaries=[], operations=ops)
+    partitioned = PartitionedCircuit(segments=[segment], boundaries=[])
 
     symbolic = annotated_to_distributed_circuit(partitioned, qpu_data_capacity=1)
     lowered = lower_distributed_circuit(symbolic)
@@ -253,19 +230,23 @@ def test_lower_distributed_circuit_teledata_matches_ideal_state_transfer() -> No
         instructions=[],
         partition={QubitId(0): NodeId(1)},
     )
-    ops = [
-        *[
-            LocalOp(segment_id=SegmentId(0), instruction=inst, nodes=(NodeId(0),))
-            for inst in prep
+    partitioned = PartitionedCircuit(
+        segments=[left, right],
+        boundaries=[
+            SegmentBoundary(
+                boundary_id=BoundaryId(0),
+                left_segment_id=SegmentId(0),
+                right_segment_id=SegmentId(1),
+                teleports=[
+                    TeleportBoundary(
+                        qubit=QubitId(0),
+                        from_node=NodeId(0),
+                        to_node=NodeId(1),
+                    )
+                ],
+            )
         ],
-        BoundaryTeleportOp(
-            boundary_id=BoundaryId(0),
-            wire=QubitId(0),
-            from_node=NodeId(0),
-            to_node=NodeId(1),
-        ),
-    ]
-    partitioned = PartitionedCircuit(segments=[left, right], boundaries=[], operations=ops)
+    )
 
     symbolic = annotated_to_distributed_circuit(partitioned, qpu_data_capacity=1)
     lowered = lower_distributed_circuit(symbolic)
@@ -279,4 +260,3 @@ def test_lower_distributed_circuit_teledata_matches_ideal_state_transfer() -> No
     reduced_remote = partial_trace(remote, [0, 1, 2, 3, 4])
     reduced_ideal = partial_trace(ideal_density, [0, 1, 2, 3, 4])
     assert state_fidelity(reduced_remote, reduced_ideal) == pytest.approx(1.0, abs=1e-9)
-

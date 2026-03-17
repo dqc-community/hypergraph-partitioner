@@ -25,7 +25,7 @@ def test_build_hypergraph_from_qasm_interaction() -> None:
         """
     )
 
-    hyp = build_hypergraph_from_instructions(circuit.instructions, n_qubits=2, max_hedge_dist=100)
+    hyp = build_hypergraph_from_instructions(circuit.instructions, n_qubits=2)
 
     assert set(hyp.wires) == {0, 1}
     assert len(hyp.interactions) >= 1
@@ -41,7 +41,7 @@ def test_count_cuts_detects_cut() -> None:
         cx q[0], q[1];
         """
     )
-    hyp = build_hypergraph_from_instructions(circuit.instructions, n_qubits=2, max_hedge_dist=100)
+    hyp = build_hypergraph_from_instructions(circuit.instructions, n_qubits=2)
     seg = Segment(
         gates=circuit.instructions,
         hypergraph=hyp,

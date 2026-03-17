@@ -67,4 +67,3 @@ AnnotatedOp: TypeAlias = LocalOp | NonlocalCZOp | BoundaryTeleportOp
 class PartitionedCircuit:
     segments: list[PartitionedSegment]
     boundaries: list[SegmentBoundary]
-    operations: list[AnnotatedOp]

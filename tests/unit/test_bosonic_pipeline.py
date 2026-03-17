@@ -16,6 +16,7 @@ from hypergraph_partitioner.bosonic_pipeline import (
     _ignore_last_seam,
     _preprocess,
     _initial_segments,
+    iter_annotated_operations,
     build_hypergraph_from_instructions,
     count_interactions,
     count_nonlocal_interactions,
@@ -136,12 +137,13 @@ def test_annotated_circuit_orders_boundary_ops_between_segments() -> None:
     assert len(result.segments) == 2
     assert len(result.boundaries) == 1
     assert isinstance(result.boundaries[0], SegmentBoundary)
+    operations = list(iter_annotated_operations(result))
 
     first_boundary_idx = next(
-        i for i, op in enumerate(result.operations) if isinstance(op, BoundaryTeleportOp)
+        i for i, op in enumerate(operations) if isinstance(op, BoundaryTeleportOp)
     )
     first_nonlocal_idx = next(
-        i for i, op in enumerate(result.operations) if isinstance(op, NonlocalCZOp)
+        i for i, op in enumerate(operations) if isinstance(op, NonlocalCZOp)
     )
 
     assert first_nonlocal_idx < first_boundary_idx
@@ -281,12 +283,10 @@ def test_preprocess_step2_keeps_wire_interactions_in_circuit_order() -> None:
     step1_hyp = build_hypergraph_from_instructions(
         step1_only.instructions,
         n_qubits=circuit.qubits(),
-        max_hedge_dist=100,
     )
     preprocessed_hyp = build_hypergraph_from_instructions(
         preprocessed,
         n_qubits=circuit.qubits(),
-        max_hedge_dist=100,
     )
 
     assert [getattr(inst, "kind", None) for inst in preprocessed[:2]] == ["cz", "cz"]
@@ -363,8 +363,9 @@ def test_annotated_circuit_marks_nonlocal_czs_and_boundary_teleports() -> None:
 
     assert count_nonlocal_interactions(result) == 1
     assert count_teleports(result) == 1
-    assert any(isinstance(op, NonlocalCZOp) for op in result.operations)
-    assert any(isinstance(op, BoundaryTeleportOp) for op in result.operations)
+    operations = list(iter_annotated_operations(result))
+    assert any(isinstance(op, NonlocalCZOp) for op in operations)
+    assert any(isinstance(op, BoundaryTeleportOp) for op in operations)
 
 
 def test_partition_circuit_end_to_end_annotates_nonlocal_czs() -> None:
@@ -397,7 +398,7 @@ def test_partition_circuit_end_to_end_annotates_nonlocal_czs() -> None:
         config_path=KAHYPAR_CONFIG,
     )
 
-    nonlocal_ops = [op for op in result.operations if isinstance(op, NonlocalCZOp)]
+    nonlocal_ops = [op for op in iter_annotated_operations(result) if isinstance(op, NonlocalCZOp)]
 
     assert len(result.segments) >= 1
     assert len(result.boundaries) == max(0, len(result.segments) - 1)
@@ -433,7 +434,9 @@ def test_real_circuit_initial_segments_annotate_multiple_segments_and_teleports(
     )
     result = _annotate_partitioned_circuit(_ignore_last_seam(initial))
 
-    teleport_ops = [op for op in result.operations if isinstance(op, BoundaryTeleportOp)]
+    teleport_ops = [
+        op for op in iter_annotated_operations(result) if isinstance(op, BoundaryTeleportOp)
+    ]
     assert len(result.segments) >= 2
     assert len(result.boundaries) == len(result.segments) - 1
     assert len(teleport_ops) >= 1

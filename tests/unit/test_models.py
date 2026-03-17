@@ -9,7 +9,6 @@ from bosonic_model.instructions import UInstruction
 from hypergraph_partitioner.models.circuit_annotations import (
     NodeId,
     BoundaryId,
-    BoundaryTeleportOp,
     LocalOp,
     PartitionedCircuit,
     PartitionedSegment,
@@ -59,24 +58,17 @@ def test_partitioned_circuit_model_roundtrip() -> None:
         instructions=[inst],
         partition={QubitId(0): NodeId(1)},
     )
-    teleport = TeleportBoundary(wire=QubitId(0), from_node=NodeId(0), to_node=NodeId(1))
+    teleport = TeleportBoundary(qubit=QubitId(0), from_node=NodeId(0), to_node=NodeId(1))
     boundary = SegmentBoundary(
         boundary_id=BoundaryId(0),
         left_segment_id=SegmentId(0),
         right_segment_id=SegmentId(1),
         teleports=[teleport],
     )
-    op = BoundaryTeleportOp(
-        boundary_id=BoundaryId(0),
-        wire=QubitId(0),
-        from_node=NodeId(0),
-        to_node=NodeId(1),
-    )
-    result = PartitionedCircuit(segments=[segment], boundaries=[boundary], operations=[op])
+    result = PartitionedCircuit(segments=[segment], boundaries=[boundary])
 
     assert result.segments[0].partition[QubitId(0)] == NodeId(1)
     assert result.boundaries[0].teleports[0].to_node == NodeId(1)
-    assert result.operations[0] == op
 
 
 def test_local_op_blocks_preserve_block_ids() -> None:
