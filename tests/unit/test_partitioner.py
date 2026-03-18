@@ -155,6 +155,21 @@ def test_derive_qubit_spans_splits_on_single_qubit_boundaries() -> None:
     assert spans[1] == [QubitSpan(qubit=1, start=0, end=3, interaction_ids=(0, 1))]
 
 
+def test_derive_qubit_spans_starts_at_first_actual_qubit_use() -> None:
+    seg = Segment(
+        gates=[_gate(0), _gate(1), _gate(1, 2)],
+        hypergraph=_hyp((0, 2, (1, 2)), qubits=(0, 1, 2)),
+        partition={0: 0, 1: 0, 2: 1},
+        seam=SeamCompute(),
+        segment_range=(0, 0),
+    )
+
+    spans = _derive_qubit_spans(seg)
+
+    assert spans[1] == [QubitSpan(qubit=1, start=1, end=3, interaction_ids=(0,))]
+    assert spans[2] == [QubitSpan(qubit=2, start=2, end=3, interaction_ids=(0,))]
+
+
 def test_split_long_spans_max_dist_one_splits_per_interaction() -> None:
     interactions = {
         0: InteractionVertex(interaction_id=0, position=0, qubits=(0, 1)),

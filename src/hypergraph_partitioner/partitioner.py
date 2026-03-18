@@ -97,14 +97,14 @@ def _derive_qubit_spans(seg: Segment) -> dict[int, list[QubitSpan]]:
             if interaction_id is None:
                 continue
             for qubit in qubits:
-                start, interaction_ids = open_spans.get(qubit, (0, []))
+                start, interaction_ids = open_spans.get(qubit, (pos, []))
                 interaction_ids.append(interaction_id)
                 open_spans[qubit] = (start, interaction_ids)
             continue
 
         if len(qubits) == 1:
             qubit = qubits[0]
-            start, interaction_ids = open_spans.get(qubit, (0, []))
+            start, interaction_ids = open_spans.get(qubit, (pos, []))
             spans.setdefault(qubit, []).append(
                 QubitSpan(qubit=qubit, start=start, end=pos, interaction_ids=tuple(interaction_ids))
             )
