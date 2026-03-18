@@ -63,7 +63,9 @@ def partition_circuit(
         return partition_hypergraph(hyp, n_qubits, k, config_path)
 
     merged = merge_seams(to_hyp, to_part, k, n_qubits, max_hedge_dist, initial)
-    return _annotate_partitioned_circuit(merged)
+    partitioned_circuit = _annotate_partitioned_circuit(merged)
+
+    return partitioned_circuit
 
 
 def _preprocess(circuit: Circuit) -> Circuit:
