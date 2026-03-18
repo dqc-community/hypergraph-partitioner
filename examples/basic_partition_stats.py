@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 from bosonic_model.qasm import Translator
 
-from hypergraph_partitioner import (
-    count_interactions,
-    count_nonlocal_interactions,
-    count_teleports,
-    partition_circuit,
+from hypergraph_partitioner.bosonic_pipeline import (
+    _partition_to_partitioned_circuit,
+    _count_interactions,
+    _count_nonlocal_interactions,
+    _count_teleports,
 )
 
 qasm_text = """
@@ -25,23 +24,19 @@ cx q[0], q[3];
 cx q[1], q[4];
 """
 
-config_path = Path(__file__).resolve().parent.parent / "kahypar/config/km1_kKaHyPar_sea20.ini"
-
 circuit = Translator().from_qasm(qasm_text)
-segments = partition_circuit(
+partitioned_circuit = _partition_to_partitioned_circuit(
     circuit,
-    k=2,
+    nodes=2,
     init_seg_size=int(os.environ.get("INIT_SEG_SIZE", "1000")),
     max_hedge_dist=100,
-    config_path=str(config_path),
 )
 
-print(f"res = {segments}")
 
 stats = {
-    "interactions": count_interactions(circuit.instructions),
-    "nonlocal": count_nonlocal_interactions(segments),
-    "teleports": count_teleports(segments, circuit.qubits()),
+    "interactions": _count_interactions(circuit.instructions),
+    "nonlocal": _count_nonlocal_interactions(partitioned_circuit),
+    "teleports": _count_teleports(partitioned_circuit),
 }
 
 print(stats)

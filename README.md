@@ -1,178 +1,79 @@
 # hypergraph-partitioner
 
-`hypergraph-partitioner` is the Python hypergraph partitioning pipeline extracted and modernized from the original Haskell `Distributed` project.
+`hypergraph-partitioner` takes a monolithic circuit, splits it into temporally optimized 'segments', and then used KaHyPar to distribute the gates in each segment to a number of nodes with a fixed number of qubits per node.
 
-This document focuses on one thing: **what functionality is currently equivalent vs. not yet equivalent** to the Haskell implementation, and exactly what remains to implement for parity.
+Cross node interactions are handled by remote CZ gates (telegate protocol), and cross segment interactions are handled by qubit teleportations (teledata protocol).
 
-## Scope and Current Role
+The repo is a Python modernization Pablo Andres-Martinez's landmark 2019 paper on hypergraph partitioning applied to DQC: https://arxiv.org/abs/1811.10972
 
-The package currently provides:
+## Example
 
-- parsing-independent partitioning over `bosonic_model.Circuit` instructions,
-- hypergraph construction from instruction interactions,
-- segment partitioning with KaHyPar,
-- seam merge heuristics,
-- summary metrics:
-  - interaction count,
-  - nonlocal interaction count,
-  - teleport count (as partition-boundary wire moves).
+```python
+from bosonic_model.qasm import Translator
 
-It intentionally does **not** yet emit a full distributed execution circuit with explicit teleportation / ebit protocol operations.
+from hypergraph_partitioner import (
+    annotated_to_distributed_circuit,
+    count_interactions,
+    count_nonlocal_interactions,
+    count_teleports,
+    lower_distributed_circuit,
+    partition_circuit,
+)
+qasm_text = """
+OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[4];
+cz q[0], q[1];
+cz q[2], q[3];
+cz q[0], q[3];
+"""
 
-## Relationship to Original Haskell `Distributed`
+circuit = Translator().from_qasm(qasm_text)
 
-The original Haskell project performs both:
+result = partition_circuit(
+    circuit,
+    nodes=2,
+    init_seg_size=10,
+    max_hedge_dist=100,
+)
 
-1. partitioning logic, and
-2. explicit distributed-circuit synthesis (including ebit lifecycle and teleport-style protocol steps).
+distributed_symbolic = annotated_to_distributed_circuit(
+    result,
+    qubits_per_node=4,
+)
 
-This Python repo currently implements (1) strongly, and implements only the analytical subset of (2).
+lowered = lower_distributed_circuit(distributed_symbolic)
+```
 
-## Feature-by-Feature Comparison
 
-### 1) Input model
+### Telegate Lowering
 
-- Haskell `Distributed`: Quipper ASCII / Quipper-native circuit representation.
-- `hypergraph-partitioner`: `bosonic_model` instruction stream (usually from OpenQASM 2 parser).
+We decompose (lower) a remote `CZ` through the following telegate protocol:
 
-Status: **Not identical by design** (modernized input path).
+- Bell-pair primitive
+- local `u` / `rzz` gates
+- LOCC corrections
 
-### 2) Gate preparation / normalization
 
-- Haskell: preprocessing includes Quipper-specific gate normalization and control handling assumptions.
-- Python: `prepare_instructions` currently removes barriers and preserves order.
+![Telegate lowering](.pytest_artifacts/remote_cz_protocol.png)
 
-Status: **Partial parity**.
+### Teledata Lowering
 
-Impact: some semantics from Quipper preprocessing are not represented yet as explicit prep passes.
+We lower a qubit teleportation protocol (teledata) through the following protocol:
 
-### 3) Hypergraph construction
+- Bell-pair primitive
+- local `u` / `rzz` gates
+- LOCC corrections on the destination side
 
-- Haskell: builds hypergraph from interaction structure with hedge handling.
-- Python: equivalent conceptual flow in `build_hypergraph_from_instructions`, including long-hedge splitting.
 
-Status: **High parity** for interaction-driven partitioning.
+![Teledata lowering](.pytest_artifacts/teledata_protocol.png)
 
-### 4) Segmentation + seam merge
+Useful examples:
 
-- Haskell: initial segmentation plus seam merge to reduce teleport/cut cost over time.
-- Python: same high-level strategy (`_initial_segments`, `merge_seams`, partition recomputation).
+- `examples/basic_partition_stats.py`
+- `examples/contrived_two_phase_four_qubit_segments.py`
 
-Status: **High parity**.
-
-### 5) Teleport accounting across segments
-
-- Haskell: uses partition changes between adjacent segments and integrates this into distributed build decisions.
-- Python: `count_teleports` computes this metric explicitly.
-
-Status: **Metric parity only**.
-
-### 6) Nonlocal gate realization (core gap)
-
-- Haskell: explicit transformation from nonlocal interactions into protocol operations (ebit allocation, bell/entangler-disentangler components, measurements, classically-controlled corrections, cleanup).
-- Python: does not emit those protocol operations in this repo.
-
-Status: **Major gap**.
-
-### 7) Segment-boundary state movement (core gap)
-
-- Haskell: inserts explicit `teleport` gate operations when a wire changes assigned block between consecutive segments.
-- Python: currently only counts these transitions; no emitted operations.
-
-Status: **Major gap**.
-
-### 8) Output artifact type
-
-- Haskell: emits transformed distributed gate stream with protocol structure.
-- Python: returns `list[Segment]` + stats.
-
-Status: **Different output level**.
-
-## What This Means in Practice
-
-Today, this repo is best described as:
-
-- a **mature partitioning/statistics engine**,
-- not yet a full **distributed-circuit synthesis engine**.
-
-If your goal is parity with Haskell `Distributed`, the remaining work is not in KaHyPar/seam quality but in **lowering semantics** (what gets emitted for nonlocal work and inter-segment movement).
-
-## Concrete Parity Roadmap
-
-### Phase 1: Introduce explicit protocol IR in Python
-
-Add Python-side representation for distributed protocol primitives, for example:
-
-- `EbitAllocate`, `EbitFree`,
-- `BellPrepare` (or explicit H + CX pair),
-- `Teleport` (state move),
-- `ClassicalMeasure`, `ClassicalCondition`,
-- remote correction ops (`X_if`, `Z_if`).
-
-Goal: stop representing nonlocal behavior as counts/placeholders only.
-
-### Phase 2: Recreate Haskell `DCircBuilder` semantics
-
-Port the logic analogous to:
-
-- nonlocal connection extraction,
-- ebit component scheduling (entangler/disentangler ordering),
-- nonlocal interaction rewrites onto ebit wires,
-- allocation/cleanup insertion ordering constraints.
-
-Goal: protocol-level output isomorphic to Haskell flow.
-
-### Phase 3: Emit segment-boundary teleports
-
-Given adjacent segment partitions:
-
-- detect wires whose block assignment changes,
-- insert explicit state-transfer operations at boundaries,
-- preserve deterministic order and wire/resource bookkeeping.
-
-Goal: convert `count_teleports` from metric into concrete circuit ops.
-
-### Phase 4: End-to-end validation against Haskell behavior
-
-For shared benchmark circuits:
-
-- compare nonlocal counts,
-- compare ebit allocations and teleport counts,
-- compare emitted protocol structure (up to representation-normalization).
-
-Goal: parity confidence, not only unit-level correctness.
-
-### Phase 5: Integration target choice
-
-Decide one of:
-
-- keep protocol IR in `hypergraph-partitioner` and lower later in consumer repo, or
-- emit `bosonic_model`-compatible distributed instructions directly.
-
-Recommendation: keep protocol IR here first, then add deterministic lowering adapters.
-
-## Current Known Intentional Limitations
-
-- No explicit teleport/ebit operation emission in this repo.
-- No full reproduction of Quipper-specific preprocessing semantics.
-- Consumer integrations may force single-segment execution, bypassing segment-boundary movement semantics.
-
-## Suggested Success Criteria for “Parity Achieved”
-
-Declare parity complete when all are true:
-
-- For representative benchmark set, Python and Haskell agree on:
-  - segment boundaries (or equivalent cost tradeoff),
-  - nonlocal interaction handling decisions,
-  - teleport/ebit totals.
-- Python emits explicit distributed protocol operations equivalent to Haskell behavior.
-- Removal of placeholder-only remote semantics is possible without losing functionality.
-
-## Where to Look in Haskell Source
-
-If you are implementing parity, these files are the key references in the original repo:
-
-- `DCircBuilder.hs` (distributed circuit building, ebit components, teleport insertion),
-- `Partitioner.hs` (segment merge and teleport cost-driven decisions),
-- `Preparation.hs` (preprocessing assumptions that influence hypergraph construction).
-
+Tests:
+```
+make test
+```
