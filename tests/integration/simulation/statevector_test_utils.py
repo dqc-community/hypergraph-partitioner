@@ -11,7 +11,7 @@ from qiskit.circuit.library import UnitaryGate
 from qiskit_aer import AerSimulator
 from qiskit.quantum_info import Statevector
 
-from hypergraph_partitioner.lowering import bell_pair_phi_plus_matrix
+from hypergraph_partitioner.circuit_lowering import bell_pair_phi_plus_matrix
 from hypergraph_partitioner.models.circuit_annotations import PartitionedCircuit
 
 

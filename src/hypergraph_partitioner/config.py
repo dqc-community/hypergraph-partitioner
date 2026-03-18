@@ -11,7 +11,7 @@ EPSILON = 0.03
 # Default path to KaHyPar configuration file
 _PKG_DIR = Path(__file__).parent
 DEFAULT_CONFIG_PATH = str(
-    _PKG_DIR / "kahypar_partioner" / "config" / "km1_kKaHyPar_sea20.ini"
+    _PKG_DIR / "kahypar_partitioner" / "config" / "km1_kKaHyPar_sea20.ini"
 )
 
 # Allow override via environment variable

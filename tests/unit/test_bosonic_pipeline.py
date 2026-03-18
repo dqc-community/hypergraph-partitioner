@@ -23,7 +23,7 @@ from hypergraph_partitioner.bosonic_pipeline import (
     partition_circuit,
 )
 from hypergraph_partitioner.segment_merger import ignore_last_seam
-from hypergraph_partitioner.cz_commutation import push_cz_early
+from hypergraph_partitioner.preprocessing.cz_commutation import push_cz_early
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
 from hypergraph_partitioner.models.circuit_annotations import (
     BoundaryTeleportOp,
@@ -31,7 +31,7 @@ from hypergraph_partitioner.models.circuit_annotations import (
     PartitionedCircuit,
     SegmentBoundary,
 )
-from hypergraph_partitioner.qiskit_normalization import normalize_to_one_qubit_and_cz
+from hypergraph_partitioner.preprocessing.normalization import normalize_to_one_qubit_and_cz
 from hypergraph_partitioner.models.segment import SeamStop, Segment
 
 

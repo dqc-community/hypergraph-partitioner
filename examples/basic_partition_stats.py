@@ -27,7 +27,7 @@ cx q[1], q[4];
 
 config_path = (
     Path(__file__).resolve().parent.parent
-    / "src/hypergraph_partitioner/kahypar_partioner/config/km1_kKaHyPar_sea20.ini"
+    / "src/hypergraph_partitioner/kahypar_partitioner/config/km1_kKaHyPar_sea20.ini"
 )
 
 circuit = Translator().from_qasm(qasm_text)

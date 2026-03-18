@@ -11,7 +11,7 @@ from collections.abc import Iterable, Iterator
 from bosonic_model import BarrierInstruction, Circuit, ConditionalInstruction
 from bosonic_model.instructions import CzInstruction, InstructionType
 
-from hypergraph_partitioner.cz_commutation import push_cz_early
+from hypergraph_partitioner.preprocessing.cz_commutation import push_cz_early
 from hypergraph_partitioner.models.circuit_annotations import (
     AnnotatedOp,
     NodeId,
@@ -29,8 +29,8 @@ from hypergraph_partitioner.models.circuit_annotations import (
 from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, QubitVertex
 from hypergraph_partitioner.models.segment import SeamCompute, Segment
 from hypergraph_partitioner.segment_merger import ignore_last_seam, merge_seams
-from hypergraph_partitioner.kahypar_partioner import partition_hypergraph
-from hypergraph_partitioner.qiskit_normalization import normalize_to_one_qubit_and_cz
+from hypergraph_partitioner.kahypar_partitioner import partition_hypergraph
+from hypergraph_partitioner.preprocessing.normalization import normalize_to_one_qubit_and_cz
 
 
 def _unwrap_conditional(inst: InstructionType) -> InstructionType:

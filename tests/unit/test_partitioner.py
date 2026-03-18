@@ -5,11 +5,14 @@ from __future__ import annotations
 from fractions import Fraction
 from types import SimpleNamespace
 
+from bosonic_model.qasm import Translator
+
+from hypergraph_partitioner.bosonic_pipeline import build_hypergraph_from_instructions
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
-from hypergraph_partitioner.hgraph_builder import count_cuts
-from hypergraph_partitioner.kahypar_partioner import partition_hypergraph
+from hypergraph_partitioner.kahypar_partitioner import partition_hypergraph
 from hypergraph_partitioner.segment_merger import (
     QubitSpan,
+    _count_cuts,
     _compute_new_seams,
     _count_qubit_moves,
     _derive_qubit_spans,
@@ -330,7 +333,27 @@ def test_count_cuts_counts_cross_block_hyperedges() -> None:
         segment_range=(0, 0),
     )
 
-    assert count_cuts(seg) == 2
+    assert _count_cuts(seg) == 2
+
+
+def test_count_cuts_detects_cut_from_qasm_hypergraph() -> None:
+    circuit = Translator().from_qasm(
+        """
+        OPENQASM 2.0;
+        include "qelib1.inc";
+        qreg q[2];
+        cx q[0], q[1];
+        """
+    )
+    seg = Segment(
+        gates=circuit.instructions,
+        hypergraph=build_hypergraph_from_instructions(circuit.instructions, n_qubits=2),
+        partition={0: 0, 1: 1},
+        seam=SeamStop(),
+        segment_range=(0, 0),
+    )
+
+    assert _count_cuts(seg) >= 1
 
 
 def test_merge_min_merges_when_merged_cut_cost_is_not_worse() -> None:

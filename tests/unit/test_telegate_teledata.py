@@ -10,7 +10,7 @@ from bosonic_model import Circuit, UInstruction
 from qiskit_aer import AerSimulator
 from qiskit.quantum_info import DensityMatrix, partial_trace, state_fidelity
 
-from hypergraph_partitioner.lowering import (
+from hypergraph_partitioner.circuit_lowering import (
     build_ideal_remote_cz,
     build_ideal_teledata,
     build_telegate_remote_cz,

@@ -4,7 +4,12 @@ import math
 
 from bosonic_model.instructions import CzInstruction, MeasureInstruction, ResetInstruction, UInstruction
 
-from hypergraph_partitioner.cz_commutation import USemantics, classify_u, push_cz_early, z_u
+from hypergraph_partitioner.preprocessing.cz_commutation import (
+    USemantics,
+    classify_u,
+    push_cz_early,
+    z_u,
+)
 
 
 def _u(qubit: int, theta: float, phi: float, lam: float) -> UInstruction:

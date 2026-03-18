@@ -5,13 +5,8 @@ from __future__ import annotations
 from bosonic_model.qasm import Translator
 
 from hypergraph_partitioner.bosonic_pipeline import build_hypergraph_from_instructions
-from hypergraph_partitioner.hgraph_builder import (
-    build_interaction_to_qubits,
-    count_cuts,
-    hypergraph_to_kahypar,
-)
+from hypergraph_partitioner.hgraph_builder import hypergraph_to_kahypar
 from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, QubitVertex
-from hypergraph_partitioner.models.segment import SeamStop, Segment
 
 
 def test_build_hypergraph_from_qasm_interaction() -> None:
@@ -30,35 +25,6 @@ def test_build_hypergraph_from_qasm_interaction() -> None:
     assert set(hyp.qubits) == {0, 1}
     assert len(hyp.interactions) >= 1
     assert any(interaction.qubits == (0, 1) for interaction in hyp.interactions.values())
-
-
-def test_count_cuts_detects_cut() -> None:
-    circuit = Translator().from_qasm(
-        """
-        OPENQASM 2.0;
-        include \"qelib1.inc\";
-        qreg q[2];
-        cx q[0], q[1];
-        """
-    )
-    hyp = build_hypergraph_from_instructions(circuit.instructions, n_qubits=2)
-    seg = Segment(
-        gates=circuit.instructions,
-        hypergraph=hyp,
-        partition={0: 0, 1: 1},
-        seam=SeamStop(),
-    )
-
-    assert count_cuts(seg) >= 1
-
-
-def test_build_interaction_to_qubits_tracks_incident_logical_qubits() -> None:
-    hyp = Hypergraph(
-        qubits={0: QubitVertex(0), 1: QubitVertex(1)},
-        interactions={0: InteractionVertex(interaction_id=0, position=0, qubits=(0, 1))},
-    )
-
-    assert build_interaction_to_qubits(hyp) == {0: {0, 1}}
 
 
 def test_hypergraph_qubit_to_interactions_orders_by_position() -> None:

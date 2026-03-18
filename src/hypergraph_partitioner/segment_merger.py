@@ -8,7 +8,6 @@ from itertools import count
 from collections.abc import Callable
 from fractions import Fraction
 
-from hypergraph_partitioner.hgraph_builder import count_cuts
 from hypergraph_partitioner.models.hypergraph import Hypergraph, Matching, Partition
 from hypergraph_partitioner.models.segment import Seam, SeamCompute, SeamStop, SeamValue, Segment
 
@@ -142,10 +141,10 @@ def _merge_min(to_hyp: ToHyp, to_part: ToPart, n_qubits: int, segments: list[Seg
         segment_range=merged_segment_range,
     )
 
-    cuts_left = count_cuts(left_seg)
-    cuts_right = count_cuts(right_seg)
+    cuts_left = _count_cuts(left_seg)
+    cuts_right = _count_cuts(right_seg)
     teles = _count_qubit_moves(left_seg.partition, right_seg.partition, n_qubits)
-    cuts_merged = count_cuts(merged_seg)
+    cuts_merged = _count_cuts(merged_seg)
     separate_cost = cuts_left + cuts_right + teles
 
     if separate_cost < cuts_merged:
@@ -422,3 +421,12 @@ def _upd_with(matching: Matching, seg: Segment) -> Segment:
 def _count_qubit_moves(part1: Partition, part2: Partition, n_qubits: int) -> int:
     """Count qubits that change block between two adjacent partitions."""
     return sum(1 for qubit in range(n_qubits) if qubit in part1 and qubit in part2 and part1[qubit] != part2[qubit])
+
+
+def _count_cuts(segment: Segment) -> int:
+    """Count the number of hyperedge cuts induced by a segment partition."""
+    total = 0
+    for interaction in segment.hypergraph.interactions.values():
+        blocks = {segment.partition[qubit] for qubit in interaction.qubits if qubit in segment.partition}
+        total += max(0, len(blocks) - 1)
+    return total

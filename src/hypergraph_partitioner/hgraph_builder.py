@@ -3,21 +3,6 @@
 from __future__ import annotations
 
 from hypergraph_partitioner.models.hypergraph import Hypergraph
-from hypergraph_partitioner.models.segment import Segment
-
-
-def build_interaction_to_qubits(hyp: Hypergraph) -> dict[int, set[int]]:
-    """Record which logical qubits participate in each interaction vertex."""
-    return {interaction_id: set(interaction.qubits) for interaction_id, interaction in hyp.interactions.items()}
-
-
-def count_cuts(segment: Segment) -> int:
-    """Count the number of hyperedge cuts in a segment."""
-    total = 0
-    for interaction in segment.hypergraph.interactions.values():
-        blocks = {segment.partition[w] for w in interaction.qubits if w in segment.partition}
-        total += max(0, len(blocks) - 1)
-    return total
 
 
 def hypergraph_to_kahypar(hyp: Hypergraph, n_qubits: int) -> tuple[list[int], list[int], list[int]]:
