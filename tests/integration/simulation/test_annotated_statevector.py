@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 from bosonic_converters import CircuitConverters
-from bosonic_model import Circuit, GateInstruction
+from bosonic_model import Condition, ConditionalInstruction, Circuit, GateInstruction, Register
+from bosonic_model.instructions import CzInstruction, InstructionType
 from qiskit import QuantumCircuit
 
 from hypergraph_partitioner import (
@@ -11,7 +12,13 @@ from hypergraph_partitioner import (
 )
 from hypergraph_partitioner.bosonic_pipeline import _count_nonlocal_interactions, _count_teleports
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
-from hypergraph_partitioner.models.circuit_annotations import PartitionedCircuit
+from hypergraph_partitioner.models.circuit_annotations import (
+    NodeId,
+    PartitionedCircuit,
+    PartitionedSegment,
+    QubitId,
+    SegmentId,
+)
 from tests.integration.simulation.statevector_test_utils import (
     INPUT_STATES,
     assert_statevectors_equivalent,
@@ -25,21 +32,21 @@ from tests.integration.simulation.statevector_test_utils import (
 )
 
 
+def _rewrite_symbolic_instruction(inst: InstructionType) -> InstructionType:
+    if isinstance(inst, ConditionalInstruction):
+        rewritten_op = _rewrite_symbolic_instruction(inst.op)
+        return inst.model_copy(update={"op": rewritten_op, "qubits": list(rewritten_op.qubits)})
+
+    if isinstance(inst, GateInstruction) and inst.name == "remote_cz":
+        return GateInstruction(name="cz", qubits=list(inst.qubits), params=[], opaque=True)
+    if isinstance(inst, GateInstruction) and inst.name == "teleport":
+        return GateInstruction(name="swap", qubits=list(inst.qubits), params=[], opaque=True)
+    return inst
+
+
 def _rewrite_symbolic_for_qiskit(circuit: Circuit) -> Circuit:
-    rewritten: list[InstructionType] = []
-    for inst in circuit.instructions:
-        if isinstance(inst, GateInstruction) and inst.name == "remote_cz":
-            rewritten.append(
-                GateInstruction(name="cz", qubits=list(inst.qubits), params=[], opaque=True)
-            )
-            continue
-        if isinstance(inst, GateInstruction) and inst.name == "teleport":
-            rewritten.append(
-                GateInstruction(name="swap", qubits=list(inst.qubits), params=[], opaque=True)
-            )
-            continue
-        rewritten.append(inst)
-    return Circuit(qregs=circuit.qregs, cregs={}, instructions=rewritten)
+    rewritten = [_rewrite_symbolic_instruction(inst) for inst in circuit.instructions]
+    return Circuit(qregs=circuit.qregs, cregs=circuit.cregs, instructions=rewritten)
 
 
 def _annotated_distributed_to_qiskit(
@@ -67,6 +74,38 @@ def test_annotated_statevector_matches_original_for_remote_cz(
 
     assert _count_nonlocal_interactions(partitioned) == 1
     assert _count_teleports(partitioned) == 0
+
+    annotated = simulate_statevector(_annotated_distributed_to_qiskit(partitioned, qpu_data_capacity=1))
+    original = simulate_statevector(
+        embedded_original_to_qiskit(circuit, partitioned, qpu_data_capacity=1)
+    )
+
+    assert_statevectors_equivalent(annotated, original)
+
+
+@pytest.mark.integration
+def test_annotated_statevector_matches_original_for_conditional_remote_cz() -> None:
+    circuit = Circuit(
+        qregs={"q": Register(name="q", size=2, base=0)},
+        cregs={"c": Register(name="c", size=1, base=0)},
+        instructions=[
+            *with_preparations(Circuit(), [(0, "+"), (1, "+")]).instructions,
+            ConditionalInstruction(
+                condition=Condition(cbit=0, value=True),
+                op=CzInstruction(control=0, target=1, qubits=[0, 1]),
+            ),
+        ],
+    )
+    partitioned = PartitionedCircuit(
+        segments=[
+            PartitionedSegment(
+                segment_id=SegmentId(0),
+                instructions=list(circuit.instructions),
+                partition={QubitId(0): NodeId(0), QubitId(1): NodeId(1)},
+            )
+        ],
+        boundaries=[],
+    )
 
     annotated = simulate_statevector(_annotated_distributed_to_qiskit(partitioned, qpu_data_capacity=1))
     original = simulate_statevector(

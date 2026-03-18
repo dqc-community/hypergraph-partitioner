@@ -125,6 +125,7 @@ def test_build_annotated_circuit_preserves_condition_on_remote_cz() -> None:
     assert isinstance(node0[0].op, GateInstruction)
     assert node0[0].op.name == "remote_cz"
     assert node0[0] is node1[0]
+    assert distributed.circuits[0].cregs["c"].size == 1
 
 
 def test_build_annotated_circuit_emits_teleport_and_updates_destination() -> None:

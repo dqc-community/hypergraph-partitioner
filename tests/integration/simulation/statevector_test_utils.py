@@ -65,7 +65,7 @@ def to_aer_compatible_qiskit(circuit: QuantumCircuit) -> QuantumCircuit:
     rewritten = QuantumCircuit(*circuit.qregs, *circuit.cregs)
     for inst in circuit.data:
         op = inst.operation
-        if op.name in {"bell_pair_phi_plus", "remote_bell_pair_phi_plus"}:
+        if op.name == "bell_pair_phi_plus":
             rewritten.append(
                 UnitaryGate(bell_pair_phi_plus_matrix(), label=op.name),
                 inst.qubits,

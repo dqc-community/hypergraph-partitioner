@@ -107,7 +107,7 @@ def test_produces_multiple_segments() -> None:
 
 
 @pytest.mark.integration
-def test_max_hedge_dist_changes_segmentation_regression() -> None:
+def test_max_hedge_dist_changes_segmentation() -> None:
     circuit = _multi_segment_regression_circuit()
 
     short = partition_circuit(

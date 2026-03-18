@@ -16,7 +16,7 @@ from bosonic_model import (
 )
 
 from hypergraph_partitioner.bosonic_pipeline import iter_annotated_operations
-from hypergraph_partitioner.models.circuit_annotations import LocalOp, PartitionedCircuit
+from hypergraph_partitioner.models.circuit_annotations import PartitionedCircuit
 
 
 @dataclass
@@ -61,8 +61,9 @@ def validate_capacity(partitioned: PartitionedCircuit, qpu_data_capacity: int) -
 def max_existing_cbit(partitioned: PartitionedCircuit) -> int:
     maximum = -1
     for op in iter_annotated_operations(partitioned):
-        if isinstance(op, LocalOp):
-            maximum = max(maximum, max_cbit_in_instruction(op.instruction))
+        inst = getattr(op, "instruction", None)
+        if inst is not None:
+            maximum = max(maximum, max_cbit_in_instruction(inst))
     return maximum
 
 
