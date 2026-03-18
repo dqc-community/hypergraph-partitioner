@@ -7,11 +7,13 @@ runtime data flow to bosonic_model instructions.
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
+from typing import Literal
 
-from bosonic_model import BarrierInstruction, Circuit, ConditionalInstruction
+from bosonic_model import BarrierInstruction, Circuit, ConditionalInstruction, DistributedCircuit
 from bosonic_model.instructions import CzInstruction, InstructionType
 
 from hypergraph_partitioner.preprocessing.cz_commutation import push_cz_early
+from hypergraph_partitioner.config import DEFAULT_CONFIG_PATH
 from hypergraph_partitioner.models.circuit_annotations import (
     AnnotatedOp,
     NodeId,
@@ -36,13 +38,40 @@ from hypergraph_partitioner.preprocessing.normalization import normalize_to_one_
 def partition_circuit(
     circuit: Circuit,
     *,
-    k: int,
-    init_seg_size: int,
-    max_hedge_dist: int,
-    config_path: str,
+    nodes: int,
+    qubits_per_node: int,
+    init_seg_size: int = 10,
+    max_hedge_dist: int = 100,
+    output: Literal["symbolic", "lowered"] = "symbolic",
+) -> DistributedCircuit:
+    from hypergraph_partitioner.distributor import build_annotated_circuit
+
+    partitioned = _partition_to_partitioned_circuit(
+        circuit,
+        nodes=nodes,
+        init_seg_size=init_seg_size,
+        max_hedge_dist=max_hedge_dist,
+    )
+    symbolic = build_annotated_circuit(partitioned, qubits_per_node=qubits_per_node)
+
+    if output == "symbolic":
+        return symbolic
+    if output == "lowered":
+        from hypergraph_partitioner.circuit_lowering import lower_distributed_circuit
+        return lower_distributed_circuit(symbolic)
+    else:
+        raise ValueError(f"unsupported output mode: {output}")
+
+
+def _partition_to_partitioned_circuit(
+    circuit: Circuit,
+    *,
+    nodes: int,
+    init_seg_size: int = 10,
+    max_hedge_dist: int = 100,
 ) -> PartitionedCircuit:
     normalized = _preprocess(circuit)
-    
+
     instructions = _prepare_instructions(normalized.instructions)
     n_qubits = circuit.qubits()
 
@@ -50,9 +79,8 @@ def partition_circuit(
         instructions,
         init_seg_size,
         n_qubits,
-        k,
+        nodes,
         max_hedge_dist,
-        config_path,
     )
     initial = ignore_last_seam(initial)
 
@@ -60,12 +88,10 @@ def partition_circuit(
         return _build_hypergraph_from_instructions(insts, n_qubits)
 
     def to_part(hyp: Hypergraph) -> dict[int, int]:
-        return partition_hypergraph(hyp, n_qubits, k, config_path)
+        return partition_hypergraph(hyp, n_qubits, nodes, DEFAULT_CONFIG_PATH)
 
-    merged = merge_seams(to_hyp, to_part, k, n_qubits, max_hedge_dist, initial)
-    partitioned_circuit = _annotate_partitioned_circuit(merged)
-
-    return partitioned_circuit
+    merged = merge_seams(to_hyp, to_part, nodes, n_qubits, max_hedge_dist, initial)
+    return _annotate_partitioned_circuit(merged)
 
 
 def _preprocess(circuit: Circuit) -> Circuit:
@@ -84,9 +110,8 @@ def _initial_segments(
     instructions: list[InstructionType],
     init_seg_size: int,
     n_qubits: int,
-    k: int,
+    nodes: int,
     max_hedge_dist: int,
-    config_path: str,
 ) -> list[Segment]:
     segments: list[Segment] = []
     remaining = list(instructions)
@@ -101,7 +126,7 @@ def _initial_segments(
         remaining = remaining[split:]
 
         hyp = _build_hypergraph_from_instructions(this_insts, n_qubits)
-        part = partition_hypergraph(hyp, n_qubits, k, config_path)
+        part = partition_hypergraph(hyp, n_qubits, nodes, DEFAULT_CONFIG_PATH)
 
         segments.append(
             Segment(

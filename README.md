@@ -19,8 +19,6 @@ from hypergraph_partitioner import (
     lower_distributed_circuit,
     partition_circuit,
 )
-from hypergraph_partitioner.config import KAHYPAR_CONFIG
-
 qasm_text = """
 OPENQASM 2.0;
 include "qelib1.inc";
@@ -34,15 +32,14 @@ circuit = Translator().from_qasm(qasm_text)
 
 result = partition_circuit(
     circuit,
-    k=2,
+    nodes=2,
     init_seg_size=10,
     max_hedge_dist=100,
-    config_path=KAHYPAR_CONFIG,
 )
 
 distributed_symbolic = annotated_to_distributed_circuit(
     result,
-    qpu_data_capacity=4,
+    qubits_per_node=4,
 )
 
 lowered = lower_distributed_circuit(distributed_symbolic)

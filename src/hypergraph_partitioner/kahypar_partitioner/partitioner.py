@@ -8,22 +8,22 @@ from hypergraph_partitioner.models.hypergraph import Hypergraph, Partition
 import kahypar
 
 
-def partition_hypergraph(hyp: Hypergraph, n_qubits: int, k: int, config_path: str) -> Partition:
+def partition_hypergraph(hyp: Hypergraph, n_qubits: int, nodes: int, config_path: str) -> Partition:
     """Partition hypergraph."""
 
     indices, nets, weights = _hypergraph_to_kahypar(hyp, n_qubits)
     n_nets = len(indices) - 1
 
     if n_nets == 0 or not nets:
-        return _balanced_fallback_partition(n_qubits, k)
+        return _balanced_fallback_partition(n_qubits, nodes)
 
     ctx = kahypar.Context()
     ctx.loadINIconfiguration(config_path)
-    ctx.setK(k)
+    ctx.setK(nodes)
     ctx.setEpsilon(float(config.EPSILON))
     ctx.suppressOutput(True)
 
-    hg = kahypar.Hypergraph(n_qubits, n_nets, indices, nets, k, [], weights)
+    hg = kahypar.Hypergraph(n_qubits, n_nets, indices, nets, nodes, [], weights)
     kahypar.partition(hg, ctx)
 
     return {v: hg.blockID(v) for v in range(n_qubits)}
@@ -50,7 +50,7 @@ def _hypergraph_to_kahypar(hyp: Hypergraph, n_qubits: int) -> tuple[list[int], l
     return hyperedge_indices, hyperedge_vertices, vertex_weights
 
 
-def _balanced_fallback_partition(n_qubits: int, k: int) -> Partition:
-    if k < 1:
-        raise ValueError("k must be positive")
-    return {qubit: qubit % k for qubit in range(n_qubits)}
+def _balanced_fallback_partition(n_qubits: int, nodes: int) -> Partition:
+    if nodes < 1:
+        raise ValueError("nodes must be positive")
+    return {qubit: qubit % nodes for qubit in range(n_qubits)}

@@ -45,16 +45,16 @@ def num_nodes(partitioned: PartitionedCircuit) -> int:
     return max_node + 1 if max_node >= 0 else 0
 
 
-def validate_capacity(partitioned: PartitionedCircuit, qpu_data_capacity: int) -> None:
+def validate_capacity(partitioned: PartitionedCircuit, qubits_per_node: int) -> None:
     for seg in partitioned.segments:
         per_node: dict[int, int] = {}
         for node in seg.partition.values():
             per_node[int(node)] = per_node.get(int(node), 0) + 1
         for node, count in per_node.items():
-            if count > qpu_data_capacity:
+            if count > qubits_per_node:
                 raise ValueError(
                     f"segment {seg.segment_id} assigns {count} qubits to node {node}, "
-                    f"exceeding qpu_data_capacity={qpu_data_capacity}"
+                    f"exceeding qubits_per_node={qubits_per_node}"
                 )
 
 
@@ -83,13 +83,13 @@ def max_cbit_in_instruction(inst: InstructionType) -> int:
     return -1
 
 
-def build_qpu_layouts(qpu_data_capacity: int, n_nodes: int) -> dict[int, QpuLayout]:
+def build_qpu_layouts(qubits_per_node: int, n_nodes: int) -> dict[int, QpuLayout]:
     qpu_layouts: dict[int, QpuLayout] = {}
     for node in range(n_nodes):
-        base = node * 3 * qpu_data_capacity
-        data_slots = list(range(base, base + qpu_data_capacity))
-        comm_slots = list(range(base + qpu_data_capacity, base + 2 * qpu_data_capacity))
-        receiver_slots = list(range(base + 2 * qpu_data_capacity, base + 3 * qpu_data_capacity))
+        base = node * 3 * qubits_per_node
+        data_slots = list(range(base, base + qubits_per_node))
+        comm_slots = list(range(base + qubits_per_node, base + 2 * qubits_per_node))
+        receiver_slots = list(range(base + 2 * qubits_per_node, base + 3 * qubits_per_node))
         qpu_layouts[node] = QpuLayout(
             node=node,
             data_slots=data_slots,

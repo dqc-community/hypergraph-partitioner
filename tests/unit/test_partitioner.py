@@ -65,7 +65,7 @@ def _seg_with_hyp(
 
 
 def test_partition_hypergraph_empty_hypergraph_returns_balanced_assignment() -> None:
-    part = partition_hypergraph(Hypergraph(qubits={}, interactions={}), n_qubits=3, k=2, config_path=KAHYPAR_CONFIG)
+    part = partition_hypergraph(Hypergraph(qubits={}, interactions={}), n_qubits=3, nodes=2, config_path=KAHYPAR_CONFIG)
 
     assert part == {0: 0, 1: 1, 2: 0}
 
@@ -73,7 +73,7 @@ def test_partition_hypergraph_empty_hypergraph_returns_balanced_assignment() -> 
 def test_partition_hypergraph_returns_assignment_for_nonempty_hypergraph() -> None:
     hyp = _hyp((0, 0, (0, 1)))
 
-    part = partition_hypergraph(hyp, n_qubits=2, k=2, config_path=KAHYPAR_CONFIG)
+    part = partition_hypergraph(hyp, n_qubits=2, nodes=2, config_path=KAHYPAR_CONFIG)
 
     assert part.keys() == {0, 1}
     assert sorted(part.values()) == [0, 1]
@@ -247,7 +247,7 @@ def test_match_partitions_returns_full_mapping() -> None:
     p1 = {0: 0, 1: 1, 2: 0, 3: 1}
     p2 = {0: 1, 1: 0, 2: 1, 3: 0}
 
-    match = _match_partitions(p1, p2, k=2, n_qubits=4)
+    match = _match_partitions(p1, p2, nodes=2, n_qubits=4)
 
     assert set(match.keys()) == {0, 1}
     assert set(match.values()) == {0, 1}
@@ -258,7 +258,7 @@ def test_match_partitions_prefers_lowest_cost_full_matching() -> None:
     p1 = {0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 2}
     p2 = {0: 2, 1: 2, 2: 0, 3: 0, 4: 1, 5: 1}
 
-    match = _match_partitions(p1, p2, k=3, n_qubits=6)
+    match = _match_partitions(p1, p2, nodes=3, n_qubits=6)
 
     assert match == {0: 2, 1: 0, 2: 1}
 
@@ -267,7 +267,7 @@ def test_match_partitions_handles_nonzero_optimal_cost() -> None:
     p1 = {0: 0, 1: 0, 2: 1, 3: 1}
     p2 = {0: 0, 1: 1, 2: 0, 3: 1}
 
-    match = _match_partitions(p1, p2, k=2, n_qubits=4)
+    match = _match_partitions(p1, p2, nodes=2, n_qubits=4)
 
     assert match == {0: 0, 1: 1}
 
@@ -276,7 +276,7 @@ def test_match_partitions_handles_empty_blocks() -> None:
     p1 = {0: 0, 1: 0}
     p2 = {0: 1, 1: 1}
 
-    match = _match_partitions(p1, p2, k=3, n_qubits=2)
+    match = _match_partitions(p1, p2, nodes=3, n_qubits=2)
 
     assert match == {0: 1, 1: 0, 2: 2}
 
@@ -285,7 +285,7 @@ def test_match_partitions_preserves_identity_when_already_aligned() -> None:
     p1 = {0: 0, 1: 1}
     p2 = {0: 0, 1: 1}
 
-    match = _match_partitions(p1, p2, k=3, n_qubits=2)
+    match = _match_partitions(p1, p2, nodes=3, n_qubits=2)
 
     assert match == {0: 0, 1: 1, 2: 2}
 
@@ -379,7 +379,7 @@ def test_merge_seams_single_segment_stops() -> None:
     result = merge_seams(
         lambda _g: Hypergraph(qubits={}, interactions={}),
         lambda _h: {0: 0, 1: 1},
-        k=2,
+        nodes=2,
         n_qubits=2,
         max_hedge_dist=100,
         segments=segs,

@@ -8,9 +8,8 @@ from bosonic_model.qasm import Translator
 from hypergraph_partitioner.bosonic_pipeline import (
     _count_nonlocal_interactions,
     _count_teleports,
-    partition_circuit,
+    _partition_to_partitioned_circuit,
 )
-from hypergraph_partitioner.config import KAHYPAR_CONFIG
 
 
 def _multi_segment_regression_circuit():
@@ -87,12 +86,11 @@ def _multi_segment_regression_circuit():
 def test_produces_multiple_segments() -> None:
     circuit = _multi_segment_regression_circuit()
 
-    result = partition_circuit(
+    result = _partition_to_partitioned_circuit(
         circuit,
-        k=2,
+        nodes=2,
         init_seg_size=10,
         max_hedge_dist=100,
-        config_path=KAHYPAR_CONFIG,
     )
 
     assert len(result.segments) == 5
@@ -110,19 +108,17 @@ def test_produces_multiple_segments() -> None:
 def test_max_hedge_dist_changes_segmentation() -> None:
     circuit = _multi_segment_regression_circuit()
 
-    short = partition_circuit(
+    short = _partition_to_partitioned_circuit(
         circuit,
-        k=2,
+        nodes=2,
         init_seg_size=10,
         max_hedge_dist=1,
-        config_path=KAHYPAR_CONFIG,
     )
-    long = partition_circuit(
+    long = _partition_to_partitioned_circuit(
         circuit,
-        k=2,
+        nodes=2,
         init_seg_size=10,
         max_hedge_dist=100,
-        config_path=KAHYPAR_CONFIG,
     )
 
     assert len(short.segments) == 4

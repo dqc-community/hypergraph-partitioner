@@ -84,7 +84,7 @@ def num_blocks(partitioned: PartitionedCircuit) -> int:
 
 
 def initial_qubit_locations(
-    partitioned: PartitionedCircuit, qpu_data_capacity: int
+    partitioned: PartitionedCircuit, qubits_per_node: int
 ) -> dict[int, int]:
     n_blocks = num_blocks(partitioned)
     first_segment = partitioned.segments[0]
@@ -93,23 +93,23 @@ def initial_qubit_locations(
         qubits = sorted(
             int(qubit) for qubit, owner in first_segment.partition.items() if int(owner) == node
         )
-        base = node * 3 * qpu_data_capacity
-        data_slots = list(range(base, base + qpu_data_capacity))
+        base = node * 3 * qubits_per_node
+        data_slots = list(range(base, base + qubits_per_node))
         for slot, qubit in zip(data_slots, qubits, strict=False):
             locations[qubit] = slot
     return locations
 
 
 def final_qubit_locations(
-    partitioned: PartitionedCircuit, qpu_data_capacity: int
+    partitioned: PartitionedCircuit, qubits_per_node: int
 ) -> dict[int, int]:
     n_blocks = num_blocks(partitioned)
-    locations = initial_qubit_locations(partitioned, qpu_data_capacity)
+    locations = initial_qubit_locations(partitioned, qubits_per_node)
     receiver_slots = {
         block: set(
             range(
-                block * 3 * qpu_data_capacity + 2 * qpu_data_capacity,
-                (block + 1) * 3 * qpu_data_capacity,
+                block * 3 * qubits_per_node + 2 * qubits_per_node,
+                (block + 1) * 3 * qubits_per_node,
             )
         )
         for block in range(n_blocks)
@@ -133,11 +133,11 @@ def final_qubit_locations(
 
 
 def embedded_original_to_qiskit(
-    circuit: Circuit, partitioned: PartitionedCircuit, qpu_data_capacity: int
+    circuit: Circuit, partitioned: PartitionedCircuit, qubits_per_node: int
 ) -> QuantumCircuit:
-    initial_locations_map = initial_qubit_locations(partitioned, qpu_data_capacity)
-    final_locations_map = final_qubit_locations(partitioned, qpu_data_capacity)
-    total_qubits = num_blocks(partitioned) * 3 * qpu_data_capacity
+    initial_locations_map = initial_qubit_locations(partitioned, qubits_per_node)
+    final_locations_map = final_qubit_locations(partitioned, qubits_per_node)
+    total_qubits = num_blocks(partitioned) * 3 * qubits_per_node
 
     logical = CircuitConverters.to_qiskit(circuit)
     embedded = QuantumCircuit(total_qubits)

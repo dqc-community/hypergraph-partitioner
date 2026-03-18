@@ -4,7 +4,7 @@ Phase 1 repeatedly couples qubits (0,1) and (2,3).
 Phase 2 repeatedly couples qubits (0,3) and (1,2).
 
 The intent is to create a sharp change in the interaction graph around the
-midpoint and see whether the full ``partition_circuit(...)`` pipeline preserves
+midpoint and see whether the internal partitioning pipeline preserves
 multiple final segments.
 """
 
@@ -15,9 +15,11 @@ import logging
 
 from bosonic_model.qasm import Translator
 
-from hypergraph_partitioner import partition_circuit
-from hypergraph_partitioner.bosonic_pipeline import _count_nonlocal_interactions, _count_teleports
-from hypergraph_partitioner.config import KAHYPAR_CONFIG
+from hypergraph_partitioner.bosonic_pipeline import (
+    _count_nonlocal_interactions,
+    _count_teleports,
+    _partition_to_partitioned_circuit,
+)
 
 
 def _append_phase_one_pattern(lines: list[str]) -> None:
@@ -54,7 +56,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--phase-one-steps", type=int, default=50)
     parser.add_argument("--phase-two-steps", type=int, default=50)
-    parser.add_argument("--k", type=int, default=2)
+    parser.add_argument("--nodes", type=int, default=2)
     parser.add_argument("--init-seg-size", type=int, default=7)
     parser.add_argument("--max-hedge-dist", type=int, default=100)
     args = parser.parse_args()
@@ -70,12 +72,11 @@ def main() -> int:
         phase_two_steps=args.phase_two_steps,
     )
     circuit = Translator().from_qasm(qasm)
-    result = partition_circuit(
+    result = _partition_to_partitioned_circuit(
         circuit,
-        k=args.k,
+        nodes=args.nodes,
         init_seg_size=args.init_seg_size,
         max_hedge_dist=args.max_hedge_dist,
-        config_path=KAHYPAR_CONFIG,
     )
 
     print("Input summary")
@@ -83,7 +84,7 @@ def main() -> int:
         {
             "phase_one_steps": args.phase_one_steps,
             "phase_two_steps": args.phase_two_steps,
-            "k": args.k,
+            "nodes": args.nodes,
             "init_seg_size": args.init_seg_size,
             "max_hedge_dist": args.max_hedge_dist,
         }

@@ -33,16 +33,16 @@ from .state import DistributionState, PhysicalLocation
 
 
 def build_annotated_circuit(
-    partitioned: PartitionedCircuit, *, qpu_data_capacity: int
+    partitioned: PartitionedCircuit, *, qubits_per_node: int
 ) -> DistributedCircuit:
-    if qpu_data_capacity < 1:
-        raise ValueError("qpu_data_capacity must be positive")
+    if qubits_per_node < 1:
+        raise ValueError("qubits_per_node must be positive")
     if not partitioned.segments:
         return DistributedCircuit(qubits_per_node={}, circuits={})
 
     n_nodes = num_nodes(partitioned)
-    validate_capacity(partitioned, qpu_data_capacity)
-    state = _initialize_distribution_state(partitioned, qpu_data_capacity, n_nodes)
+    validate_capacity(partitioned, qubits_per_node)
+    state = _initialize_distribution_state(partitioned, qubits_per_node, n_nodes)
 
     for op in iter_annotated_operations(partitioned):
         if isinstance(op, LocalOp):
@@ -56,7 +56,7 @@ def build_annotated_circuit(
 
     finalize_circuit_registers(
         state.circuits,
-        total_qubits=n_nodes * 3 * qpu_data_capacity,
+        total_qubits=n_nodes * 3 * qubits_per_node,
         total_cbits=state.next_cbit,
     )
     distributed = DistributedCircuit(
@@ -71,9 +71,9 @@ def build_annotated_circuit(
 
 
 def _initialize_distribution_state(
-    partitioned: PartitionedCircuit, qpu_data_capacity: int, n_nodes: int
+    partitioned: PartitionedCircuit, qubits_per_node: int, n_nodes: int
 ) -> DistributionState:
-    qpu_layouts = build_qpu_layouts(qpu_data_capacity, n_nodes)
+    qpu_layouts = build_qpu_layouts(qubits_per_node, n_nodes)
     circuits = {node: Circuit() for node in range(n_nodes)}
 
     first_segment = partitioned.segments[0]

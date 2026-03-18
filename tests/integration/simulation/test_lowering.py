@@ -69,7 +69,7 @@ def test_build_annotated_circuit_converts_local_ops_only() -> None:
         boundaries=[],
     )
 
-    distributed = build_annotated_circuit(partitioned, qpu_data_capacity=1)
+    distributed = build_annotated_circuit(partitioned, qubits_per_node=1)
 
     assert isinstance(distributed, DistributedCircuit)
     assert distributed.qubits_per_node == {0: [0, 1, 2]}
@@ -90,7 +90,7 @@ def test_build_annotated_circuit_emits_remote_cz_symbolically() -> None:
         boundaries=[],
     )
 
-    distributed = build_annotated_circuit(partitioned, qpu_data_capacity=1)
+    distributed = build_annotated_circuit(partitioned, qubits_per_node=1)
 
     node0 = distributed.circuits[0].instructions
     node1 = distributed.circuits[1].instructions
@@ -115,7 +115,7 @@ def test_build_annotated_circuit_preserves_condition_on_remote_cz() -> None:
         boundaries=[],
     )
 
-    distributed = build_annotated_circuit(partitioned, qpu_data_capacity=1)
+    distributed = build_annotated_circuit(partitioned, qubits_per_node=1)
 
     node0 = distributed.circuits[0].instructions
     node1 = distributed.circuits[1].instructions
@@ -158,7 +158,7 @@ def test_build_annotated_circuit_emits_teleport_and_updates_destination() -> Non
         ],
     )
 
-    distributed = build_annotated_circuit(partitioned, qpu_data_capacity=1)
+    distributed = build_annotated_circuit(partitioned, qubits_per_node=1)
 
     node0 = distributed.circuits[0].instructions
     node1 = distributed.circuits[1].instructions
@@ -235,7 +235,7 @@ def test_build_annotated_circuit_reuses_receiver_slots_after_back_and_forth_tele
         ],
     )
 
-    distributed = build_annotated_circuit(partitioned, qpu_data_capacity=1)
+    distributed = build_annotated_circuit(partitioned, qubits_per_node=1)
 
     names = [
         str(getattr(inst, "name", getattr(inst, "kind", "")))
@@ -275,7 +275,7 @@ def test_build_annotated_circuit_preserves_operation_order() -> None:
         ],
     )
 
-    distributed = build_annotated_circuit(partitioned, qpu_data_capacity=1)
+    distributed = build_annotated_circuit(partitioned, qubits_per_node=1)
     names = [
         str(getattr(inst, "name", getattr(inst, "kind", "")))
         for inst in distributed.as_monolithic_circuit().instructions
@@ -291,8 +291,8 @@ def test_build_annotated_circuit_rejects_segments_exceeding_capacity() -> None:
     )
     partitioned = PartitionedCircuit(segments=[segment], boundaries=[])
 
-    with pytest.raises(ValueError, match="exceeding qpu_data_capacity"):
-        build_annotated_circuit(partitioned, qpu_data_capacity=1)
+    with pytest.raises(ValueError, match="exceeding qubits_per_node"):
+        build_annotated_circuit(partitioned, qubits_per_node=1)
 
 
 def test_lower_distributed_circuit_telegate_matches_ideal_cz() -> None:
@@ -306,7 +306,7 @@ def test_lower_distributed_circuit_telegate_matches_ideal_cz() -> None:
     )
     partitioned = PartitionedCircuit(segments=[segment], boundaries=[])
 
-    symbolic = build_annotated_circuit(partitioned, qpu_data_capacity=1)
+    symbolic = build_annotated_circuit(partitioned, qubits_per_node=1)
     lowered = lower_distributed_circuit(symbolic)
     remote = _simulate_density(CircuitConverters.to_qiskit(lowered.as_monolithic_circuit()))
 
@@ -353,7 +353,7 @@ def test_lower_distributed_circuit_teledata_matches_ideal_state_transfer() -> No
         ],
     )
 
-    symbolic = build_annotated_circuit(partitioned, qpu_data_capacity=1)
+    symbolic = build_annotated_circuit(partitioned, qubits_per_node=1)
     lowered = lower_distributed_circuit(symbolic)
     remote = _simulate_density(CircuitConverters.to_qiskit(lowered.as_monolithic_circuit()))
 

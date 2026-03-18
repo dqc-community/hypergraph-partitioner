@@ -9,10 +9,12 @@ from qiskit.quantum_info import Statevector
 from hypergraph_partitioner import (
     build_annotated_circuit,
     lower_distributed_circuit,
-    partition_circuit,
 )
-from hypergraph_partitioner.bosonic_pipeline import _count_nonlocal_interactions, _count_teleports
-from hypergraph_partitioner.config import KAHYPAR_CONFIG
+from hypergraph_partitioner.bosonic_pipeline import (
+    _count_nonlocal_interactions,
+    _count_teleports,
+    _partition_to_partitioned_circuit,
+)
 from hypergraph_partitioner.models.circuit_annotations import PartitionedCircuit
 from tests.integration.simulation.statevector_test_utils import (
     INPUT_STATES,
@@ -33,14 +35,14 @@ def _simulate_statevector(circuit: QuantumCircuit) -> Statevector:
     return simulate_statevector(circuit)
 
 
-def _lowered_monolithic(partitioned: PartitionedCircuit, qpu_data_capacity: int) -> Circuit:
-    symbolic = build_annotated_circuit(partitioned, qpu_data_capacity=qpu_data_capacity)
+def _lowered_monolithic(partitioned: PartitionedCircuit, qubits_per_node: int) -> Circuit:
+    symbolic = build_annotated_circuit(partitioned, qubits_per_node=qubits_per_node)
     lowered = lower_distributed_circuit(symbolic)
     return lowered.as_monolithic_circuit()
 
 
-def _lowered_to_qiskit(partitioned: PartitionedCircuit, qpu_data_capacity: int) -> QuantumCircuit:
-    return CircuitConverters.to_qiskit(_lowered_monolithic(partitioned, qpu_data_capacity))
+def _lowered_to_qiskit(partitioned: PartitionedCircuit, qubits_per_node: int) -> QuantumCircuit:
+    return CircuitConverters.to_qiskit(_lowered_monolithic(partitioned, qubits_per_node))
 
 
 def _instruction_names(circuit: Circuit) -> list[str]:
@@ -58,23 +60,22 @@ def test_lowered_statevector_matches_original_for_local_only(
     input_control: str, input_target: str
 ) -> None:
     circuit = local_only_circuit(input_control, input_target)
-    partitioned = partition_circuit(
+    partitioned = _partition_to_partitioned_circuit(
         circuit,
-        k=1,
+        nodes=1,
         init_seg_size=10,
         max_hedge_dist=100,
-        config_path=KAHYPAR_CONFIG,
     )
 
-    lowered_monolithic = _lowered_monolithic(partitioned, qpu_data_capacity=2)
+    lowered_monolithic = _lowered_monolithic(partitioned, qubits_per_node=2)
     names = _instruction_names(lowered_monolithic)
     assert "bell_pair_phi_plus" not in names
     assert "measure" not in names
     assert "reset" not in names
 
-    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qpu_data_capacity=2))
+    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qubits_per_node=2))
     original = _simulate_statevector(
-        embedded_original_to_qiskit(circuit, partitioned, qpu_data_capacity=2),
+        embedded_original_to_qiskit(circuit, partitioned, qubits_per_node=2),
     )
 
     assert_statevectors_equivalent(lowered, original)
@@ -87,26 +88,25 @@ def test_lowered_statevector_matches_original_for_remote_cz(
     input_control: str, input_target: str
 ) -> None:
     circuit = remote_cz_circuit(input_control, input_target)
-    partitioned = partition_circuit(
+    partitioned = _partition_to_partitioned_circuit(
         circuit,
-        k=2,
+        nodes=2,
         init_seg_size=10,
         max_hedge_dist=100,
-        config_path=KAHYPAR_CONFIG,
     )
 
     assert _count_nonlocal_interactions(partitioned) == 1
     assert _count_teleports(partitioned) == 0
 
-    lowered_monolithic = _lowered_monolithic(partitioned, qpu_data_capacity=1)
+    lowered_monolithic = _lowered_monolithic(partitioned, qubits_per_node=1)
     names = _instruction_names(lowered_monolithic)
     assert "bell_pair_phi_plus" in names
     assert "measure" in names
     assert "reset" in names
 
-    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qpu_data_capacity=1))
+    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qubits_per_node=1))
     original = _simulate_statevector(
-        embedded_original_to_qiskit(circuit, partitioned, qpu_data_capacity=1),
+        embedded_original_to_qiskit(circuit, partitioned, qubits_per_node=1),
     )
 
     assert_statevectors_equivalent(lowered, original)
@@ -126,28 +126,27 @@ def test_lowered_statevector_matches_original_for_teleporting_circuit(
     preparations: list[tuple[int, str]]
 ) -> None:
     circuit = with_preparations(teleport_regression_circuit(), preparations)
-    partitioned = partition_circuit(
+    partitioned = _partition_to_partitioned_circuit(
         circuit,
-        k=2,
+        nodes=2,
         init_seg_size=2,
         max_hedge_dist=100,
-        config_path=KAHYPAR_CONFIG,
     )
 
     assert len(partitioned.segments) == 2
     assert _count_nonlocal_interactions(partitioned) == 2
     assert _count_teleports(partitioned) == 2
 
-    lowered_monolithic = _lowered_monolithic(partitioned, qpu_data_capacity=2)
+    lowered_monolithic = _lowered_monolithic(partitioned, qubits_per_node=2)
     names = _instruction_names(lowered_monolithic)
     assert "bell_pair_phi_plus" in names
     assert "measure" in names
     assert "reset" in names
     assert _contains_conditional(lowered_monolithic)
 
-    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qpu_data_capacity=2))
+    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qubits_per_node=2))
     original = _simulate_statevector(
-        embedded_original_to_qiskit(circuit, partitioned, qpu_data_capacity=2),
+        embedded_original_to_qiskit(circuit, partitioned, qubits_per_node=2),
     )
 
     assert_statevectors_equivalent(lowered, original)
@@ -156,30 +155,29 @@ def test_lowered_statevector_matches_original_for_teleporting_circuit(
 @pytest.mark.integration
 def test_lowered_statevector_matches_original_for_small_multi_segment_regression_circuit() -> None:
     circuit = small_multi_segment_regression_circuit()
-    partitioned = partition_circuit(
+    partitioned = _partition_to_partitioned_circuit(
         circuit,
-        k=2,
+        nodes=2,
         init_seg_size=2,
         max_hedge_dist=100,
-        config_path=KAHYPAR_CONFIG,
     )
 
     assert len(partitioned.segments) == 2
     assert _count_nonlocal_interactions(partitioned) == 3
     assert _count_teleports(partitioned) == 2
 
-    lowered_monolithic = _lowered_monolithic(partitioned, qpu_data_capacity=2)
+    lowered_monolithic = _lowered_monolithic(partitioned, qubits_per_node=2)
     names = _instruction_names(lowered_monolithic)
     assert "bell_pair_phi_plus" in names
     assert "measure" in names
     assert "reset" in names
     assert _contains_conditional(lowered_monolithic)
 
-    lowered_circ = _lowered_to_qiskit(partitioned, qpu_data_capacity=2)
+    lowered_circ = _lowered_to_qiskit(partitioned, qubits_per_node=2)
 
     lowered = _simulate_statevector(lowered_circ)
     original = _simulate_statevector(
-        embedded_original_to_qiskit(circuit, partitioned, qpu_data_capacity=2),
+        embedded_original_to_qiskit(circuit, partitioned, qubits_per_node=2),
     )
 
     assert_statevectors_equivalent(lowered, original)

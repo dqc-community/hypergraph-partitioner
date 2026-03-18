@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 
 from bosonic_converters import CircuitConverters
+from bosonic_model import DistributedCircuit
 from bosonic_model.instructions import CzInstruction, UInstruction
 from bosonic_model.qasm import Translator
 import pytest
@@ -17,6 +18,7 @@ from hypergraph_partitioner.bosonic_pipeline import (
     _count_interactions,
     _count_nonlocal_interactions,
     _count_teleports,
+    _partition_to_partitioned_circuit,
     _preprocess,
     _initial_segments,
     iter_annotated_operations,
@@ -24,11 +26,9 @@ from hypergraph_partitioner.bosonic_pipeline import (
 )
 from hypergraph_partitioner.segment_merger import ignore_last_seam
 from hypergraph_partitioner.preprocessing.cz_commutation import push_cz_early
-from hypergraph_partitioner.config import KAHYPAR_CONFIG
 from hypergraph_partitioner.models.circuit_annotations import (
     BoundaryTeleportOp,
     NonlocalCZOp,
-    PartitionedCircuit,
     SegmentBoundary,
 )
 from hypergraph_partitioner.preprocessing.normalization import normalize_to_one_qubit_and_cz
@@ -110,18 +110,66 @@ def test_partition_circuit_runs_on_small_qasm() -> None:
 
     result = partition_circuit(
         circuit,
-        k=2,
+        nodes=2,
         init_seg_size=1000,
         max_hedge_dist=100,
-        config_path=KAHYPAR_CONFIG,
+        qubits_per_node=2,
     )
 
-    assert isinstance(result, PartitionedCircuit)
-    assert len(result.segments) >= 1
-    assert len(result.boundaries) == max(0, len(result.segments) - 1)
+    assert isinstance(result, DistributedCircuit)
+    assert result.circuits
+    assert result.qubits_per_node
     assert _count_interactions(circuit.instructions) >= 2
-    assert _count_nonlocal_interactions(result) >= 0
-    assert _count_teleports(result) >= 0
+
+
+def test_partition_circuit_can_return_lowered_distributed_circuit() -> None:
+    circuit = Translator().from_qasm(
+        """
+        OPENQASM 2.0;
+        include "qelib1.inc";
+        qreg q[2];
+        h q[0];
+        cx q[0], q[1];
+        """
+    )
+
+    result = partition_circuit(
+        circuit,
+        nodes=2,
+        init_seg_size=1000,
+        max_hedge_dist=100,
+        qubits_per_node=1,
+        output="lowered",
+    )
+
+    names = [
+        str(getattr(inst, "name", getattr(inst, "kind", "")))
+        for inst in result.as_monolithic_circuit().instructions
+    ]
+    assert isinstance(result, DistributedCircuit)
+    assert "remote_cz" not in names
+    assert "teleport" not in names
+
+
+def test_partition_circuit_rejects_unknown_output_mode() -> None:
+    circuit = Translator().from_qasm(
+        """
+        OPENQASM 2.0;
+        include "qelib1.inc";
+        qreg q[2];
+        cz q[0], q[1];
+        """
+    )
+
+    with pytest.raises(ValueError, match="unsupported output mode"):
+        partition_circuit(
+            circuit,
+            nodes=2,
+            init_seg_size=1000,
+            max_hedge_dist=100,
+            qubits_per_node=1,
+            output="partitioned",
+        )
 
 
 def test_annotated_circuit_orders_boundary_ops_between_segments() -> None:
@@ -166,9 +214,8 @@ def test_initial_segments_splits_by_interaction_count() -> None:
         circuit.instructions,
         init_seg_size=1,
         n_qubits=circuit.qubits(),
-        k=2,
+        nodes=2,
         max_hedge_dist=100,
-        config_path=KAHYPAR_CONFIG,
     )
 
     assert len(segments) == 2
@@ -390,12 +437,11 @@ def test_partition_circuit_end_to_end_annotates_nonlocal_czs() -> None:
         """
     )
 
-    result = partition_circuit(
+    result = _partition_to_partitioned_circuit(
         circuit,
-        k=2,
+        nodes=2,
         init_seg_size=1,
         max_hedge_dist=100,
-        config_path=KAHYPAR_CONFIG,
     )
 
     nonlocal_ops = [op for op in iter_annotated_operations(result) if isinstance(op, NonlocalCZOp)]
@@ -428,9 +474,8 @@ def test_real_circuit_initial_segments_annotate_multiple_segments_and_teleports(
         normalized.instructions,
         init_seg_size=1,
         n_qubits=circuit.qubits(),
-        k=2,
+        nodes=2,
         max_hedge_dist=100,
-        config_path=KAHYPAR_CONFIG,
     )
     result = _annotate_partitioned_circuit(ignore_last_seam(initial))
 

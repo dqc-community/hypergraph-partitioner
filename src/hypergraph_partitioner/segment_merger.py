@@ -24,16 +24,16 @@ class QubitSpan:
 
 
 def merge_seams(
-    to_hyp: ToHyp, to_part: ToPart, k: int, n_qubits: int, max_hedge_dist: int, segments: list[Segment]
+    to_hyp: ToHyp, to_part: ToPart, nodes: int, n_qubits: int, max_hedge_dist: int, segments: list[Segment]
 ) -> list[Segment]:
     """Iteratively merge segments until all seams are Stop."""
-    id_matching: Matching = {b: b for b in range(k)}
+    id_matching: Matching = {b: b for b in range(nodes)}
 
     while True:
         if all(isinstance(s.seam, SeamStop) for s in segments):
             return segments
 
-        matched = _match_segments(k, n_qubits, id_matching, segments)
+        matched = _match_segments(nodes, n_qubits, id_matching, segments)
         seamed = _compute_new_seams(n_qubits, max_hedge_dist, matched)
         merged = _merge_min(to_hyp, to_part, n_qubits, seamed)
         segments = ignore_last_seam(merged)
@@ -56,7 +56,7 @@ def ignore_last_seam(segments: list[Segment]) -> list[Segment]:
 
 
 def _match_segments(
-    k: int, n_qubits: int, prev_matching: Matching, segments: list[Segment]
+    nodes: int, n_qubits: int, prev_matching: Matching, segments: list[Segment]
 ) -> list[Segment]:
     """Rename blocks so adjacent segments match optimally."""
     if not segments:
@@ -71,7 +71,7 @@ def _match_segments(
         curr_seg = segments[i]
 
         if isinstance(prev_seg.seam, SeamCompute) or isinstance(curr_seg.seam, SeamCompute):
-            new_matching = _match_partitions(curr_seg.partition, prev_seg.partition, k, n_qubits)
+            new_matching = _match_partitions(curr_seg.partition, prev_seg.partition, nodes, n_qubits)
         else:
             new_matching = prev_matching
 
@@ -170,17 +170,17 @@ def _merge_min(to_hyp: ToHyp, to_part: ToPart, n_qubits: int, segments: list[Seg
     )
 
 
-def _match_partitions(part1: Partition, part2: Partition, k: int, n_qubits: int) -> Matching:
+def _match_partitions(part1: Partition, part2: Partition, nodes: int, n_qubits: int) -> Matching:
     """Match blocks between adjacent partitions with a best-first branch-and-bound search."""
     p1 = {q: b for q, b in part1.items() if q < n_qubits}
     p2 = {q: b for q, b in part2.items() if q < n_qubits}
 
-    blocks1: dict[int, list[int]] = {b: [] for b in range(k)}
+    blocks1: dict[int, list[int]] = {b: [] for b in range(nodes)}
     for qubit, block in p1.items():
         blocks1[block].append(qubit)
 
     heuristic = _heuristic_cost(blocks1, p2)
-    all_blocks = list(range(k))
+    all_blocks = list(range(nodes))
     initial_cost = sum(heuristic.values())
     initial: list[tuple[int, int, Matching]] = [(initial_cost, 0, {})]
 
