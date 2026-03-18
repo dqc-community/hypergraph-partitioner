@@ -7,9 +7,9 @@ from bosonic_model.instructions import CzInstruction, MeasureInstruction, ResetI
 from hypergraph_partitioner.cz_commutation import USemantics, classify_u, push_cz_early, z_u
 
 
-def _u(wire: int, theta: float, phi: float, lam: float) -> UInstruction:
+def _u(qubit: int, theta: float, phi: float, lam: float) -> UInstruction:
     params = [theta, phi, lam]
-    return UInstruction(qubit=wire, qubits=[wire], theta=theta, phi=phi, lam=lam, params=params)
+    return UInstruction(qubit=qubit, qubits=[qubit], theta=theta, phi=phi, lam=lam, params=params)
 
 
 def _cz(control: int, target: int) -> CzInstruction:

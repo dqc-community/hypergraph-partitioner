@@ -37,6 +37,6 @@ class Segment(BaseModel):
     hypergraph: Hypergraph = Field(default_factory=lambda: Hypergraph(qubits={}, interactions={}))
     partition: dict[int, int] = Field(default_factory=dict)
     seam: Seam = Field(default_factory=SeamCompute)
-    wire_range: tuple[int, int] = (0, 0)
+    segment_range: tuple[int, int] = (0, 0)
 
     model_config = {"arbitrary_types_allowed": True}

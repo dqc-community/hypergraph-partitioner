@@ -10,16 +10,16 @@ from hypergraph_partitioner.hgraph_builder import count_cuts
 from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, QubitVertex
 from hypergraph_partitioner.models.segment import SeamCompute, SeamStop, SeamValue, Segment
 from hypergraph_partitioner.partitioner import (
-    WireSpan,
+    QubitSpan,
     _find_valley_rec,
     _heuristic_cost,
     _ignore_last_seam,
     _match_partitions_search,
-    _derive_wire_spans,
+    _derive_qubit_spans,
     _split_long_spans,
     _upd_with,
     compute_new_seams,
-    count_teles,
+    count_qubit_moves,
     find_valley,
     get_rho,
     match_partitions,
@@ -30,9 +30,9 @@ from hypergraph_partitioner.partitioner import (
 )
 
 
-def _hyp(*interactions: tuple[int, int, tuple[int, ...]], wires: tuple[int, ...] = (0, 1)) -> Hypergraph:
+def _hyp(*interactions: tuple[int, int, tuple[int, ...]], qubits: tuple[int, ...] = (0, 1)) -> Hypergraph:
     return Hypergraph(
-        qubits={qubit_id: QubitVertex(qubit_id) for qubit_id in wires},
+        qubits={qubit_id: QubitVertex(qubit_id) for qubit_id in qubits},
         interactions={
             interaction_id: InteractionVertex(
                 interaction_id=interaction_id,
@@ -50,7 +50,7 @@ def _gate(*qubits: int) -> SimpleNamespace:
 
 def _seg(partition: dict[int, int], seam: SeamCompute | SeamStop | SeamValue = SeamCompute()) -> Segment:
     hyp = _hyp((0, 0, (0, 1)))
-    return Segment(gates=[_gate(0, 1)], hypergraph=hyp, partition=partition, seam=seam, wire_range=(0, 0))
+    return Segment(gates=[_gate(0, 1)], hypergraph=hyp, partition=partition, seam=seam, segment_range=(0, 0))
 
 
 def _seg_with_hyp(
@@ -58,7 +58,7 @@ def _seg_with_hyp(
     hyp: Hypergraph,
     seam: SeamCompute | SeamStop | SeamValue = SeamCompute(),
 ) -> Segment:
-    return Segment(gates=[], hypergraph=hyp, partition=partition, seam=seam, wire_range=(0, 0))
+    return Segment(gates=[], hypergraph=hyp, partition=partition, seam=seam, segment_range=(0, 0))
 
 
 def test_partition_hypergraph_empty_hypergraph_returns_single_block() -> None:
@@ -105,7 +105,7 @@ def test_compute_new_seams_sets_seam_value() -> None:
     assert updated[0].seam.value >= Fraction(0)
 
 
-def test_get_rho_is_zero_when_no_wires_change_blocks() -> None:
+def test_get_rho_is_zero_when_no_qubits_change_blocks() -> None:
     seg1 = _seg({0: 0, 1: 1})
     seg2 = _seg({0: 0, 1: 1})
 
@@ -114,7 +114,7 @@ def test_get_rho_is_zero_when_no_wires_change_blocks() -> None:
     assert rho == Fraction(0)
 
 
-def test_get_rho_uses_smaller_of_adjacent_wire_weights() -> None:
+def test_get_rho_uses_smaller_of_adjacent_qubit_weights() -> None:
     hyp1 = _hyp((0, 0, (0, 1)))
     hyp2 = _hyp((0, 0, (0, 1)), (1, 2, (0, 1)))
     seg1 = Segment(
@@ -122,14 +122,14 @@ def test_get_rho_uses_smaller_of_adjacent_wire_weights() -> None:
         hypergraph=hyp1,
         partition={0: 0, 1: 1},
         seam=SeamCompute(),
-        wire_range=(0, 0),
+        segment_range=(0, 0),
     )
     seg2 = Segment(
         gates=[_gate(0, 1), _gate(0), _gate(0, 1)],
         hypergraph=hyp2,
         partition={0: 1, 1: 1},
         seam=SeamCompute(),
-        wire_range=(0, 0),
+        segment_range=(0, 0),
     )
 
     rho = get_rho(2, seg1, seg2, 100)
@@ -137,22 +137,22 @@ def test_get_rho_uses_smaller_of_adjacent_wire_weights() -> None:
     assert rho == Fraction(1, 2)
 
 
-def test_derive_wire_spans_splits_on_single_qubit_boundaries() -> None:
+def test_derive_qubit_spans_splits_on_single_qubit_boundaries() -> None:
     seg = Segment(
         gates=[_gate(0, 1), _gate(0), _gate(0, 1)],
         hypergraph=_hyp((0, 0, (0, 1)), (1, 2, (0, 1))),
         partition={0: 0, 1: 1},
         seam=SeamCompute(),
-        wire_range=(0, 0),
+        segment_range=(0, 0),
     )
 
-    spans = _derive_wire_spans(seg)
+    spans = _derive_qubit_spans(seg)
 
     assert spans[0] == [
-        WireSpan(wire=0, start=0, end=1, interaction_ids=(0,)),
-        WireSpan(wire=0, start=1, end=3, interaction_ids=(1,)),
+        QubitSpan(qubit=0, start=0, end=1, interaction_ids=(0,)),
+        QubitSpan(qubit=0, start=1, end=3, interaction_ids=(1,)),
     ]
-    assert spans[1] == [WireSpan(wire=1, start=0, end=3, interaction_ids=(0, 1))]
+    assert spans[1] == [QubitSpan(qubit=1, start=0, end=3, interaction_ids=(0, 1))]
 
 
 def test_split_long_spans_max_dist_one_splits_per_interaction() -> None:
@@ -160,30 +160,30 @@ def test_split_long_spans_max_dist_one_splits_per_interaction() -> None:
         0: InteractionVertex(interaction_id=0, position=0, qubits=(0, 1)),
         1: InteractionVertex(interaction_id=1, position=2, qubits=(0, 1)),
     }
-    spans = [WireSpan(wire=0, start=0, end=3, interaction_ids=(0, 1))]
+    spans = [QubitSpan(qubit=0, start=0, end=3, interaction_ids=(0, 1))]
 
     split = _split_long_spans(spans, interactions, max_hedge_dist=1)
 
     assert split == [
-        WireSpan(wire=0, start=0, end=1, interaction_ids=(0,)),
-        WireSpan(wire=0, start=2, end=3, interaction_ids=(1,)),
+        QubitSpan(qubit=0, start=0, end=1, interaction_ids=(0,)),
+        QubitSpan(qubit=0, start=2, end=3, interaction_ids=(1,)),
     ]
 
 
 def test_get_rho_changes_when_max_hedge_dist_changes() -> None:
     seg1 = Segment(
         gates=[_gate(0, 1), _gate(0, 1), _gate(2, 3)],
-        hypergraph=_hyp((0, 0, (0, 1)), (1, 1, (0, 1)), (2, 2, (2, 3)), wires=(0, 1, 2, 3)),
+        hypergraph=_hyp((0, 0, (0, 1)), (1, 1, (0, 1)), (2, 2, (2, 3)), qubits=(0, 1, 2, 3)),
         partition={0: 0, 1: 1, 2: 0, 3: 1},
         seam=SeamCompute(),
-        wire_range=(0, 0),
+        segment_range=(0, 0),
     )
     seg2 = Segment(
         gates=[_gate(0, 1), _gate(0), _gate(0, 1), _gate(2, 3)],
-        hypergraph=_hyp((0, 0, (0, 1)), (1, 2, (0, 1)), (2, 3, (2, 3)), wires=(0, 1, 2, 3)),
+        hypergraph=_hyp((0, 0, (0, 1)), (1, 2, (0, 1)), (2, 3, (2, 3)), qubits=(0, 1, 2, 3)),
         partition={0: 1, 1: 1, 2: 0, 3: 1},
         seam=SeamCompute(),
-        wire_range=(0, 0),
+        segment_range=(0, 0),
     )
 
     assert get_rho(4, seg1, seg2, 100) == Fraction(1, 4)
@@ -228,7 +228,7 @@ def test_match_partitions_returns_full_mapping() -> None:
     p1 = {0: 0, 1: 1, 2: 0, 3: 1}
     p2 = {0: 1, 1: 0, 2: 1, 3: 0}
 
-    match = match_partitions(p1, p2, k=2, n_wires=4)
+    match = match_partitions(p1, p2, k=2, n_qubits=4)
 
     assert set(match.keys()) == {0, 1}
     assert set(match.values()) == {0, 1}
@@ -239,7 +239,7 @@ def test_match_partitions_prefers_lowest_cost_full_matching() -> None:
     p1 = {0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 2}
     p2 = {0: 2, 1: 2, 2: 0, 3: 0, 4: 1, 5: 1}
 
-    match = match_partitions(p1, p2, k=3, n_wires=6)
+    match = match_partitions(p1, p2, k=3, n_qubits=6)
 
     assert match == {0: 2, 1: 0, 2: 1}
 
@@ -248,7 +248,7 @@ def test_match_partitions_handles_nonzero_optimal_cost() -> None:
     p1 = {0: 0, 1: 0, 2: 1, 3: 1}
     p2 = {0: 0, 1: 1, 2: 0, 3: 1}
 
-    match = match_partitions(p1, p2, k=2, n_wires=4)
+    match = match_partitions(p1, p2, k=2, n_qubits=4)
 
     assert match == {0: 0, 1: 1}
 
@@ -257,7 +257,7 @@ def test_match_partitions_handles_empty_blocks() -> None:
     p1 = {0: 0, 1: 0}
     p2 = {0: 1, 1: 1}
 
-    match = match_partitions(p1, p2, k=3, n_wires=2)
+    match = match_partitions(p1, p2, k=3, n_qubits=2)
 
     assert match == {0: 1, 1: 0, 2: 2}
 
@@ -266,7 +266,7 @@ def test_match_partitions_preserves_identity_when_already_aligned() -> None:
     p1 = {0: 0, 1: 1}
     p2 = {0: 0, 1: 1}
 
-    match = match_partitions(p1, p2, k=3, n_wires=2)
+    match = match_partitions(p1, p2, k=3, n_qubits=2)
 
     assert match == {0: 0, 1: 1, 2: 2}
 
@@ -299,11 +299,11 @@ def test_match_segments_aligns_adjacent_block_labels() -> None:
     assert matched[1].partition == {0: 0, 1: 1}
 
 
-def test_count_teles_counts_wire_moves() -> None:
+def test_count_qubit_moves_counts_qubit_moves() -> None:
     part1 = {0: 0, 1: 0, 2: 1}
     part2 = {0: 1, 1: 0, 2: 1}
 
-    assert count_teles(part1, part2, n_wires=3) == 1
+    assert count_qubit_moves(part1, part2, n_qubits=3) == 1
 
 
 def test_count_cuts_counts_cross_block_hyperedges() -> None:
@@ -312,7 +312,7 @@ def test_count_cuts_counts_cross_block_hyperedges() -> None:
         hypergraph=_hyp((0, 0, (0, 1)), (1, 1, (0, 1))),
         partition={0: 0, 1: 1},
         seam=SeamCompute(),
-        wire_range=(0, 0),
+        segment_range=(0, 0),
     )
 
     assert count_cuts(seg) == 2
@@ -325,7 +325,7 @@ def test_merge_min_merges_when_merged_cut_cost_is_not_worse() -> None:
     result = merge_min(
         lambda _insts: _hyp((0, 0, (0,))),
         lambda _hyp: {0: 0, 1: 0},
-        n_wires=2,
+        n_qubits=2,
         segments=[left, right],
     )
 
@@ -341,7 +341,7 @@ def test_merge_seams_single_segment_stops() -> None:
         lambda _g: Hypergraph(qubits={}, interactions={}),
         lambda _h: {0: 0, 1: 1},
         k=2,
-        n_wires=2,
+        n_qubits=2,
         max_hedge_dist=100,
         segments=segs,
     )

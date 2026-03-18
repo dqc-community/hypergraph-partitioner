@@ -6,7 +6,7 @@ from bosonic_model import Circuit, GateInstruction
 from qiskit import QuantumCircuit
 
 from hypergraph_partitioner import (
-    annotated_to_distributed_circuit,
+    build_annotated_circuit,
     count_nonlocal_interactions,
     count_teleports,
     partition_circuit,
@@ -46,7 +46,7 @@ def _rewrite_symbolic_for_qiskit(circuit: Circuit) -> Circuit:
 def _annotated_distributed_to_qiskit(
     partitioned: PartitionedCircuit, qpu_data_capacity: int
 ) -> QuantumCircuit:
-    distributed = annotated_to_distributed_circuit(partitioned, qpu_data_capacity=qpu_data_capacity)
+    distributed = build_annotated_circuit(partitioned, qpu_data_capacity=qpu_data_capacity)
     symbolic = _rewrite_symbolic_for_qiskit(distributed.as_monolithic_circuit())
     return CircuitConverters.to_qiskit(symbolic)
 
@@ -92,7 +92,7 @@ def test_annotated_statevector_matches_original_for_multi_segment_regression_cir
     assert count_nonlocal_interactions(partitioned) == 14
     assert count_teleports(partitioned) == 8
 
-    distributed = annotated_to_distributed_circuit(partitioned, qpu_data_capacity=4)
+    distributed = build_annotated_circuit(partitioned, qpu_data_capacity=4)
     names = [
         str(getattr(inst, "name", getattr(inst, "kind", "")))
         for inst in distributed.as_monolithic_circuit().instructions
@@ -162,7 +162,7 @@ def test_annotated_statevector_matches_original_for_teleporting_circuit(
     assert count_nonlocal_interactions(partitioned) == 2
     assert count_teleports(partitioned) == 2
 
-    distributed = annotated_to_distributed_circuit(partitioned, qpu_data_capacity=2)
+    distributed = build_annotated_circuit(partitioned, qpu_data_capacity=2)
     names = [
         str(getattr(inst, "name", getattr(inst, "kind", "")))
         for inst in distributed.as_monolithic_circuit().instructions

@@ -128,8 +128,8 @@ def test_annotated_circuit_orders_boundary_ops_between_segments() -> None:
     cz = CzInstruction(control=0, target=1, qubits=[0, 1])
     u = UInstruction(qubit=0, qubits=[0], theta=0.0, phi=0.0, lam=0.0, params=[0.0, 0.0, 0.0])
     segments = [
-        Segment(gates=[cz], partition={0: 0, 1: 1}, seam=SeamStop(), wire_range=(0, 0)),
-        Segment(gates=[u], partition={0: 1, 1: 1}, seam=SeamStop(), wire_range=(1, 1)),
+        Segment(gates=[cz], partition={0: 0, 1: 1}, seam=SeamStop(), segment_range=(0, 0)),
+        Segment(gates=[u], partition={0: 1, 1: 1}, seam=SeamStop(), segment_range=(1, 1)),
     ]
 
     result = _annotate_partitioned_circuit(segments)
@@ -174,8 +174,8 @@ def test_initial_segments_splits_by_interaction_count() -> None:
     assert len(segments) == 2
     assert count_interactions(segments[0].gates) == 1
     assert count_interactions(segments[1].gates) == 1
-    assert segments[0].wire_range == (0, 0)
-    assert segments[1].wire_range == (1, 1)
+    assert segments[0].segment_range == (0, 0)
+    assert segments[1].segment_range == (1, 1)
 
 
 def test_normalize_to_one_qubit_and_cz_rewrites_cx() -> None:
@@ -264,7 +264,7 @@ def test_preprocess_step2_pulls_cz_earlier_for_supported_u() -> None:
     assert getattr(preprocessed[0], "qubits", None) == [0, 1]
 
 
-def test_preprocess_step2_keeps_wire_interactions_in_circuit_order() -> None:
+def test_preprocess_step2_keeps_qubit_interactions_in_circuit_order() -> None:
     circuit = Translator().from_qasm(
         """
         OPENQASM 2.0;
@@ -355,8 +355,8 @@ def test_annotated_circuit_marks_nonlocal_czs_and_boundary_teleports() -> None:
     cz = CzInstruction(control=0, target=1, qubits=[0, 1])
     u = UInstruction(qubit=0, qubits=[0], theta=0.0, phi=0.0, lam=0.0, params=[0.0, 0.0, 0.0])
     segments = [
-        Segment(gates=[cz], partition={0: 0, 1: 1}, seam=SeamStop(), wire_range=(0, 0)),
-        Segment(gates=[u], partition={0: 1, 1: 1}, seam=SeamStop(), wire_range=(1, 1)),
+        Segment(gates=[cz], partition={0: 0, 1: 1}, seam=SeamStop(), segment_range=(0, 0)),
+        Segment(gates=[u], partition={0: 1, 1: 1}, seam=SeamStop(), segment_range=(1, 1)),
     ]
 
     result = _annotate_partitioned_circuit(segments)

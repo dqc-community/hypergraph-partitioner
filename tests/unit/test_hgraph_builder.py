@@ -6,7 +6,7 @@ from bosonic_model.qasm import Translator
 
 from hypergraph_partitioner.bosonic_pipeline import build_hypergraph_from_instructions
 from hypergraph_partitioner.hgraph_builder import (
-    build_interaction_to_wires,
+    build_interaction_to_qubits,
     count_cuts,
     hypergraph_to_kahypar,
 )
@@ -52,13 +52,13 @@ def test_count_cuts_detects_cut() -> None:
     assert count_cuts(seg) >= 1
 
 
-def test_build_interaction_to_wires_tracks_incident_real_wires() -> None:
+def test_build_interaction_to_qubits_tracks_incident_logical_qubits() -> None:
     hyp = Hypergraph(
         qubits={0: QubitVertex(0), 1: QubitVertex(1)},
         interactions={0: InteractionVertex(interaction_id=0, position=0, qubits=(0, 1))},
     )
 
-    assert build_interaction_to_wires(hyp) == {0: {0, 1}}
+    assert build_interaction_to_qubits(hyp) == {0: {0, 1}}
 
 
 def test_hypergraph_qubit_to_interactions_orders_by_position() -> None:

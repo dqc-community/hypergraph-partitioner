@@ -131,7 +131,7 @@ def _initial_segments(
                 hypergraph=hyp,
                 partition=part,
                 seam=SeamCompute(),
-                wire_range=(seg_id, seg_id),
+                segment_range=(seg_id, seg_id),
             )
         )
         seg_id += 1

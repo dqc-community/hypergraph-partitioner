@@ -6,8 +6,8 @@ from hypergraph_partitioner.models.hypergraph import Hypergraph
 from hypergraph_partitioner.models.segment import Segment
 
 
-def build_interaction_to_wires(hyp: Hypergraph) -> dict[int, set[int]]:
-    """Record which real wires participate in each interaction vertex."""
+def build_interaction_to_qubits(hyp: Hypergraph) -> dict[int, set[int]]:
+    """Record which logical qubits participate in each interaction vertex."""
     return {interaction_id: set(interaction.qubits) for interaction_id, interaction in hyp.interactions.items()}
 
 

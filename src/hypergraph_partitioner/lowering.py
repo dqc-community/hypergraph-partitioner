@@ -18,9 +18,6 @@ from bosonic_model import (
     RzzInstruction,
     UInstruction,
 )
-from qiskit.circuit import QuantumCircuit
-from qiskit.circuit.library import UnitaryGate
-
 from hypergraph_partitioner.bosonic_pipeline import iter_annotated_operations
 from hypergraph_partitioner.models.circuit_annotations import (
     BoundaryTeleportOp,
@@ -57,7 +54,7 @@ class DistributionState:
 
 
 @dataclass
-class ProtocolLoweringState:
+class CircuitLoweringState:
     qpu_layouts: dict[int, QpuLayout]
     circuits: dict[int, Circuit]
     instruction_index: dict[int, int] = field(default_factory=dict)
@@ -87,7 +84,7 @@ def bell_pair_phi_plus_matrix() -> list[list[complex]]:
     ]
 
 
-def build_telegate_remote_cz_dsl() -> Circuit:
+def build_telegate_remote_cz() -> Circuit:
     qregs, cregs = _registers(n_qubits=4, classical=(("c_start", 1), ("c_end", 1)))
     instructions: list[InstructionType] = []
     _emit_telegate_protocol(
@@ -102,7 +99,7 @@ def build_telegate_remote_cz_dsl() -> Circuit:
     return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
 
 
-def build_ideal_remote_cz_dsl() -> Circuit:
+def build_ideal_remote_cz() -> Circuit:
     qregs, cregs = _registers(n_qubits=4, classical=())
     instructions: list[InstructionType] = [
         GateInstruction(name="cz", qubits=[0, 3], params=[], opaque=True)
@@ -110,19 +107,19 @@ def build_ideal_remote_cz_dsl() -> Circuit:
     return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
 
 
-def build_teledata_dsl() -> Circuit:
+def build_teledata() -> Circuit:
     qregs, cregs = _registers(n_qubits=3, classical=(("c_data", 1), ("c_comm", 1)))
     instructions: list[InstructionType] = []
     _emit_teledata_protocol(instructions, data_src=0, comm_src=1, comm_dst=2, c_data=0, c_comm=1)
     return Circuit(qregs=qregs, cregs=cregs, instructions=instructions)
 
 
-def build_ideal_teledata_dsl() -> Circuit:
+def build_ideal_teledata() -> Circuit:
     qregs, cregs = _registers(n_qubits=3, classical=())
     return Circuit(qregs=qregs, cregs=cregs, instructions=[])
 
 
-def annotated_to_distributed_circuit(
+def build_annotated_circuit(
     partitioned: PartitionedCircuit, *, qpu_data_capacity: int
 ) -> DistributedCircuit:
     if qpu_data_capacity < 1:
@@ -165,7 +162,7 @@ def lower_distributed_circuit(distributed: DistributedCircuit) -> DistributedCir
         return distributed
 
     qpu_layouts = _layouts_from_qubits_per_node(distributed.qubits_per_node)
-    state = ProtocolLoweringState(
+    state = CircuitLoweringState(
         qpu_layouts=qpu_layouts,
         circuits={node: Circuit() for node in distributed.circuits},
         next_cbit=_max_existing_cbit_in_distributed(distributed) + 1,
@@ -189,24 +186,6 @@ def lower_distributed_circuit(distributed: DistributedCircuit) -> DistributedCir
     )
     lowered._instruction_index = state.instruction_index
     return lowered
-
-
-def to_aer_compatible_qiskit(circuit: QuantumCircuit) -> QuantumCircuit:
-    rewritten = QuantumCircuit(*circuit.qregs, *circuit.cregs)
-    for inst in circuit.data:
-        op = inst.operation
-        if op.name in {"bell_pair_phi_plus", "remote_bell_pair_phi_plus"}:
-            rewritten.append(
-                UnitaryGate(bell_pair_phi_plus_matrix(), label=op.name),
-                inst.qubits,
-                inst.clbits,
-            )
-            continue
-        if op.name in {"remote_link_psi_minus", "remote_link_psi_plus"}:
-            rewritten.append(UnitaryGate(op.to_matrix(), label=op.name), inst.qubits, inst.clbits)
-            continue
-        rewritten.append(op, inst.qubits, inst.clbits)
-    return rewritten
 
 
 def _num_nodes(partitioned: PartitionedCircuit) -> int:
@@ -337,7 +316,7 @@ def _alloc_receiver(layout: QpuLayout) -> int:
     return qubit
 
 
-def _alloc_cbit(state: DistributionState | ProtocolLoweringState) -> int:
+def _alloc_cbit(state: DistributionState | CircuitLoweringState) -> int:
     cbit = state.next_cbit
     state.next_cbit += 1
     return cbit
@@ -348,7 +327,7 @@ def _append_instruction(
     instruction_index: dict[int, int],
     node: int,
     inst: InstructionType,
-    state: DistributionState | ProtocolLoweringState,
+    state: DistributionState | CircuitLoweringState,
 ) -> None:
     circuits[node].instructions.append(inst)
     instruction_index[id(inst)] = state.next_order
@@ -360,7 +339,7 @@ def _append_shared_instruction(
     instruction_index: dict[int, int],
     nodes: tuple[int, int],
     inst: InstructionType,
-    state: DistributionState | ProtocolLoweringState,
+    state: DistributionState | CircuitLoweringState,
 ) -> None:
     for node in nodes:
         circuits[node].instructions.append(inst)
@@ -427,7 +406,7 @@ def _distribute_teledata(op: BoundaryTeleportOp, state: DistributionState) -> No
 def _lower_remote_cz_instruction(
     inst: InstructionType,
     qubits_per_node: dict[int, list[int]],
-    state: ProtocolLoweringState,
+    state: CircuitLoweringState,
 ) -> None:
     outer_condition = inst.condition if isinstance(inst, ConditionalInstruction) else None
     inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
@@ -505,7 +484,7 @@ def _lower_remote_cz_instruction(
 def _lower_teleport_instruction(
     inst: InstructionType,
     qubits_per_node: dict[int, list[int]],
-    state: ProtocolLoweringState,
+    state: CircuitLoweringState,
 ) -> None:
     outer_condition = inst.condition if isinstance(inst, ConditionalInstruction) else None
     inner = inst.op if isinstance(inst, ConditionalInstruction) else inst

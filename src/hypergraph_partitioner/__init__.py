@@ -7,7 +7,7 @@ from hypergraph_partitioner.bosonic_pipeline import (
     partition_circuit,
 )
 from hypergraph_partitioner.lowering import (
-    annotated_to_distributed_circuit,
+    build_annotated_circuit,
     lower_distributed_circuit,
 )
 from hypergraph_partitioner.models.circuit_annotations import (
@@ -23,7 +23,7 @@ from hypergraph_partitioner.models.circuit_annotations import (
 
 __all__ = [
     "partition_circuit",
-    "annotated_to_distributed_circuit",
+    "build_annotated_circuit",
     "lower_distributed_circuit",
     "count_interactions",
     "count_nonlocal_interactions",

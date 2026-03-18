@@ -7,14 +7,13 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 
 from hypergraph_partitioner import (
-    annotated_to_distributed_circuit,
+    build_annotated_circuit,
     count_nonlocal_interactions,
     count_teleports,
     lower_distributed_circuit,
     partition_circuit,
 )
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
-from hypergraph_partitioner.lowering import to_aer_compatible_qiskit
 from hypergraph_partitioner.models.circuit_annotations import PartitionedCircuit
 from tests.integration.simulation.statevector_test_utils import (
     INPUT_STATES,
@@ -25,18 +24,18 @@ from tests.integration.simulation.statevector_test_utils import (
     simulate_statevector,
     small_multi_segment_regression_circuit,
     teleport_regression_circuit,
+    to_aer_compatible_qiskit,
     with_preparations,
 )
 
 
-def _simulate_statevector(circuit: QuantumCircuit, *, label: str) -> Statevector:
+def _simulate_statevector(circuit: QuantumCircuit) -> Statevector:
     circuit = to_aer_compatible_qiskit(circuit.copy())
-    del label
     return simulate_statevector(circuit)
 
 
 def _lowered_monolithic(partitioned: PartitionedCircuit, qpu_data_capacity: int) -> Circuit:
-    symbolic = annotated_to_distributed_circuit(partitioned, qpu_data_capacity=qpu_data_capacity)
+    symbolic = build_annotated_circuit(partitioned, qpu_data_capacity=qpu_data_capacity)
     lowered = lower_distributed_circuit(symbolic)
     return lowered.as_monolithic_circuit()
 
@@ -74,10 +73,9 @@ def test_lowered_statevector_matches_original_for_local_only(
     assert "measure" not in names
     assert "reset" not in names
 
-    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qpu_data_capacity=2), label="")
+    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qpu_data_capacity=2))
     original = _simulate_statevector(
         embedded_original_to_qiskit(circuit, partitioned, qpu_data_capacity=2),
-        label="",
     )
 
     assert_statevectors_equivalent(lowered, original)
@@ -107,10 +105,9 @@ def test_lowered_statevector_matches_original_for_remote_cz(
     assert "measure" in names
     assert "reset" in names
 
-    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qpu_data_capacity=1), label="")
+    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qpu_data_capacity=1))
     original = _simulate_statevector(
         embedded_original_to_qiskit(circuit, partitioned, qpu_data_capacity=1),
-        label="",
     )
 
     assert_statevectors_equivalent(lowered, original)
@@ -149,10 +146,9 @@ def test_lowered_statevector_matches_original_for_teleporting_circuit(
     assert "reset" in names
     assert _contains_conditional(lowered_monolithic)
 
-    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qpu_data_capacity=2), label="")
+    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qpu_data_capacity=2))
     original = _simulate_statevector(
         embedded_original_to_qiskit(circuit, partitioned, qpu_data_capacity=2),
-        label="",
     )
 
     assert_statevectors_equivalent(lowered, original)
@@ -182,10 +178,9 @@ def test_lowered_statevector_matches_original_for_small_multi_segment_regression
 
     lowered_circ = _lowered_to_qiskit(partitioned, qpu_data_capacity=2)
 
-    lowered = _simulate_statevector(lowered_circ, label="")
+    lowered = _simulate_statevector(lowered_circ)
     original = _simulate_statevector(
         embedded_original_to_qiskit(circuit, partitioned, qpu_data_capacity=2),
-        label="",
     )
 
     assert_statevectors_equivalent(lowered, original)

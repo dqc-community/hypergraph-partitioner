@@ -1,4 +1,4 @@
-"""DSL-based verification for telegate and teledata lowering protocols."""
+"""Circuit-based verification for telegate and teledata lowering protocols."""
 
 from __future__ import annotations
 
@@ -11,18 +11,18 @@ from qiskit_aer import AerSimulator
 from qiskit.quantum_info import DensityMatrix, partial_trace, state_fidelity
 
 from hypergraph_partitioner.lowering import (
-    build_ideal_remote_cz_dsl,
-    build_ideal_teledata_dsl,
-    build_telegate_remote_cz_dsl,
-    build_teledata_dsl,
-    to_aer_compatible_qiskit,
+    build_ideal_remote_cz,
+    build_ideal_teledata,
+    build_telegate_remote_cz,
+    build_teledata,
 )
+from tests.integration.simulation.statevector_test_utils import to_aer_compatible_qiskit
 
 
 _INPUT_STATES = ("0", "1", "+", "+i")
 
 
-def _prepare_state_dsl(instructions: list, qubit: int, label: str) -> None:
+def _prepare_state(instructions: list, qubit: int, label: str) -> None:
     if label == "0":
         return
     if label == "1":
@@ -77,13 +77,13 @@ def _prepare_state_dsl(instructions: list, qubit: int, label: str) -> None:
 def _with_prep(circuit: Circuit, preparations: list[tuple[int, str]]) -> Circuit:
     instructions: list = []
     for qubit, label in preparations:
-        _prepare_state_dsl(instructions, qubit, label)
+        _prepare_state(instructions, qubit, label)
     instructions.extend(circuit.instructions)
     return Circuit(qregs=circuit.qregs, cregs=circuit.cregs, instructions=instructions)
 
 
-def test_remote_cz_protocol_dsl_converts_to_qiskit() -> None:
-    circuit = build_telegate_remote_cz_dsl()
+def test_remote_cz_protocol_converts_to_qiskit() -> None:
+    circuit = build_telegate_remote_cz()
     qiskit_circuit = CircuitConverters.to_qiskit(circuit)
     assert qiskit_circuit.num_qubits == 4
     assert qiskit_circuit.num_clbits == 2
@@ -91,7 +91,7 @@ def test_remote_cz_protocol_dsl_converts_to_qiskit() -> None:
 
 @pytest.mark.parametrize("input_control", _INPUT_STATES)
 @pytest.mark.parametrize("input_target", _INPUT_STATES)
-def test_cat_entangler_remote_cz_matches_ideal_cz_via_dsl(
+def test_cat_entangler_remote_cz_matches_ideal_cz(
     input_control: str, input_target: str
 ) -> None:
     simulator = AerSimulator(method="density_matrix")
@@ -99,7 +99,7 @@ def test_cat_entangler_remote_cz_matches_ideal_cz_via_dsl(
     remote_qiskit = to_aer_compatible_qiskit(
         CircuitConverters.to_qiskit(
             _with_prep(
-                build_telegate_remote_cz_dsl(),
+                build_telegate_remote_cz(),
                 [(0, input_control), (3, input_target)],
             )
         )
@@ -107,7 +107,7 @@ def test_cat_entangler_remote_cz_matches_ideal_cz_via_dsl(
     ideal_qiskit = to_aer_compatible_qiskit(
         CircuitConverters.to_qiskit(
             _with_prep(
-                build_ideal_remote_cz_dsl(),
+                build_ideal_remote_cz(),
                 [(0, input_control), (3, input_target)],
             )
         )
@@ -128,24 +128,24 @@ def test_cat_entangler_remote_cz_matches_ideal_cz_via_dsl(
     assert state_fidelity(reduced_remote, reduced_ideal) == pytest.approx(1.0, abs=1e-9)
 
 
-def test_teledata_protocol_dsl_converts_to_qiskit() -> None:
-    circuit = build_teledata_dsl()
+def test_teledata_protocol_converts_to_qiskit() -> None:
+    circuit = build_teledata()
     qiskit_circuit = CircuitConverters.to_qiskit(circuit)
     assert qiskit_circuit.num_qubits == 3
     assert qiskit_circuit.num_clbits == 2
 
 
 @pytest.mark.parametrize("input_state", _INPUT_STATES)
-def test_teledata_state_transfer_matches_ideal_destination_state_via_dsl(
+def test_teledata_state_transfer_matches_ideal_destination_state(
     input_state: str,
 ) -> None:
     simulator = AerSimulator(method="density_matrix")
 
     remote_qiskit = to_aer_compatible_qiskit(
-        CircuitConverters.to_qiskit(_with_prep(build_teledata_dsl(), [(0, input_state)]))
+        CircuitConverters.to_qiskit(_with_prep(build_teledata(), [(0, input_state)]))
     )
     ideal_qiskit = to_aer_compatible_qiskit(
-        CircuitConverters.to_qiskit(_with_prep(build_ideal_teledata_dsl(), [(2, input_state)]))
+        CircuitConverters.to_qiskit(_with_prep(build_ideal_teledata(), [(2, input_state)]))
     )
 
     remote_qiskit.save_density_matrix()

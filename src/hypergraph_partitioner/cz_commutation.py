@@ -19,7 +19,7 @@ class USemantics(str, Enum):
 
 
 def push_cz_early(instructions: list[InstructionType]) -> list[InstructionType]:
-    """Commute CZ gates left via per-wire buffering of supported U gates."""
+    """Commute CZ gates left via per-qubit buffering of supported U gates."""
     out: list[InstructionType] = []
     pending: list[UInstruction] = []
 
@@ -48,7 +48,7 @@ def push_cz_early(instructions: list[InstructionType]) -> list[InstructionType]:
 
         qubits = set(getattr(inst, "qubits", []) or [])
         if qubits:
-            flushed, pending = _flush_wires(pending, qubits)
+            flushed, pending = _flush_qubits(pending, qubits)
             out.extend(flushed)
         else:
             out.extend(pending)
@@ -79,23 +79,23 @@ def classify_u(inst: UInstruction) -> USemantics:
     return USemantics.OTHER
 
 
-def z_u(wire: int) -> UInstruction:
-    return _u_gate(wire, 0.0, 0.0, math.pi)
+def z_u(qubit: int) -> UInstruction:
+    return _u_gate(qubit, 0.0, 0.0, math.pi)
 
 
-def x_u(wire: int) -> UInstruction:
-    return _u_gate(wire, math.pi, 0.0, math.pi)
+def x_u(qubit: int) -> UInstruction:
+    return _u_gate(qubit, math.pi, 0.0, math.pi)
 
 
-def h_u(wire: int) -> UInstruction:
-    return _u_gate(wire, math.pi / 2, 0.0, math.pi)
+def h_u(qubit: int) -> UInstruction:
+    return _u_gate(qubit, math.pi / 2, 0.0, math.pi)
 
 
-def _u_gate(wire: int, theta: float, phi: float, lam: float) -> UInstruction:
+def _u_gate(qubit: int, theta: float, phi: float, lam: float) -> UInstruction:
     params = [theta, phi, lam]
     return UInstruction(
-        qubit=wire,
-        qubits=[wire],
+        qubit=qubit,
+        qubits=[qubit],
         theta=theta,
         phi=phi,
         lam=lam,
@@ -108,12 +108,12 @@ def _append_pending(pending: list[UInstruction], inst: UInstruction) -> list[UIn
     updated.append(inst)
 
     while True:
-        same_wire = [i for i, gate in enumerate(updated) if gate.qubit == inst.qubit]
-        if len(same_wire) < 2:
+        same_qubit = [i for i, gate in enumerate(updated) if gate.qubit == inst.qubit]
+        if len(same_qubit) < 2:
             return updated
 
-        prev_idx, last_idx = same_wire[-2], same_wire[-1]
-        rewritten = _rewrite_same_wire_pair(updated[prev_idx], updated[last_idx])
+        prev_idx, last_idx = same_qubit[-2], same_qubit[-1]
+        rewritten = _rewrite_same_qubit_pair(updated[prev_idx], updated[last_idx])
         if rewritten is None:
             return updated
 
@@ -132,30 +132,30 @@ def _append_pending(pending: list[UInstruction], inst: UInstruction) -> list[UIn
             updated = new_updated
 
 
-def _rewrite_same_wire_pair(left: UInstruction, right: UInstruction) -> list[UInstruction] | None:
-    wire = left.qubit
+def _rewrite_same_qubit_pair(left: UInstruction, right: UInstruction) -> list[UInstruction] | None:
+    qubit = left.qubit
     left_semantics = classify_u(left)
     right_semantics = classify_u(right)
 
     if left_semantics == USemantics.H_GATE and right_semantics == USemantics.H_GATE:
         return []
     if left_semantics == USemantics.H_GATE and _is_exact_x(right):
-        return [z_u(wire), h_u(wire)]
+        return [z_u(qubit), h_u(qubit)]
     if left_semantics == USemantics.H_GATE and _is_exact_z(right):
-        return [x_u(wire), h_u(wire)]
+        return [x_u(qubit), h_u(qubit)]
     return None
 
 
 def _advance_across_cz(
     pending: list[UInstruction], cz: CzInstruction
 ) -> tuple[list[UInstruction], list[UInstruction]]:
-    involved_wires = set(cz.qubits)
-    crossable_indices = _crossable_suffix_indices(pending, involved_wires)
+    involved_qubits = set(cz.qubits)
+    crossable_indices = _crossable_suffix_indices(pending, involved_qubits)
 
     flushed: list[UInstruction] = []
     remaining: list[tuple[int, UInstruction]] = []
     for idx, gate in enumerate(pending):
-        if gate.qubit in involved_wires and idx not in crossable_indices:
+        if gate.qubit in involved_qubits and idx not in crossable_indices:
             flushed.append(gate)
         else:
             remaining.append((idx, gate))
@@ -164,16 +164,16 @@ def _advance_across_cz(
     for idx, gate in remaining:
         next_pending.append(gate)
         if idx in crossable_indices and classify_u(gate) in {USemantics.X_GATE, USemantics.Y_GATE}:
-            other_wire = cz.target if gate.qubit == cz.control else cz.control
-            next_pending.append(z_u(other_wire))
+            other_qubit = cz.target if gate.qubit == cz.control else cz.control
+            next_pending.append(z_u(other_qubit))
 
     return flushed, next_pending
 
 
-def _crossable_suffix_indices(pending: list[UInstruction], involved_wires: set[int]) -> set[int]:
+def _crossable_suffix_indices(pending: list[UInstruction], involved_qubits: set[int]) -> set[int]:
     crossable: set[int] = set()
-    for wire in involved_wires:
-        indices = [i for i, gate in enumerate(pending) if gate.qubit == wire]
+    for qubit in involved_qubits:
+        indices = [i for i, gate in enumerate(pending) if gate.qubit == qubit]
         for idx in reversed(indices):
             if _is_pushable(classify_u(pending[idx])):
                 crossable.add(idx)
@@ -182,13 +182,13 @@ def _crossable_suffix_indices(pending: list[UInstruction], involved_wires: set[i
     return crossable
 
 
-def _flush_wires(
-    pending: list[UInstruction], wires: set[int]
+def _flush_qubits(
+    pending: list[UInstruction], qubits: set[int]
 ) -> tuple[list[UInstruction], list[UInstruction]]:
     flushed: list[UInstruction] = []
     remaining: list[UInstruction] = []
     for gate in pending:
-        if gate.qubit in wires:
+        if gate.qubit in qubits:
             flushed.append(gate)
         else:
             remaining.append(gate)
