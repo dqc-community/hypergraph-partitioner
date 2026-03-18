@@ -95,7 +95,7 @@ def _emit_telegate_protocol(
     if include_bell:
         instructions.append(
             GateInstruction(
-                name="bell_pair_phi_plus",
+                name="remote_link_phi_plus",
                 qubits=[comm_ctrl, comm_tgt],
                 params=[],
                 opaque=True,
@@ -238,7 +238,7 @@ def _emit_teledata_protocol(
     if include_bell:
         instructions.append(
             GateInstruction(
-                name="bell_pair_phi_plus",
+                name="remote_link_phi_plus",
                 qubits=[comm_src, comm_dst],
                 params=[],
                 opaque=True,

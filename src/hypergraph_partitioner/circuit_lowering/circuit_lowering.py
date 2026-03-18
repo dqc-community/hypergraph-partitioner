@@ -85,7 +85,7 @@ def _lower_remote_cz_instruction(
     c_end = alloc_cbit(state)
 
     remote_bell = GateInstruction(
-        name="bell_pair_phi_plus",
+        name="remote_link_phi_plus",
         qubits=[comm_ctrl, comm_tgt],
         params=[],
         opaque=True,
@@ -161,7 +161,7 @@ def _lower_teleport_instruction(
     c_comm = alloc_cbit(state)
 
     remote_bell = GateInstruction(
-        name="bell_pair_phi_plus",
+        name="remote_link_phi_plus",
         qubits=[comm_src, destination_qubit],
         params=[],
         opaque=True,

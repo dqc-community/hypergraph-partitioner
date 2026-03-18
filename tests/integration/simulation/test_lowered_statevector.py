@@ -69,7 +69,7 @@ def test_lowered_statevector_matches_original_for_local_only(
 
     lowered_monolithic = _lowered_monolithic(partitioned, qubits_per_node=2)
     names = _instruction_names(lowered_monolithic)
-    assert "bell_pair_phi_plus" not in names
+    assert "remote_link_phi_plus" not in names
     assert "measure" not in names
     assert "reset" not in names
 
@@ -100,7 +100,7 @@ def test_lowered_statevector_matches_original_for_remote_cz(
 
     lowered_monolithic = _lowered_monolithic(partitioned, qubits_per_node=1)
     names = _instruction_names(lowered_monolithic)
-    assert "bell_pair_phi_plus" in names
+    assert "remote_link_phi_plus" in names
     assert "measure" in names
     assert "reset" in names
 
@@ -139,7 +139,7 @@ def test_lowered_statevector_matches_original_for_teleporting_circuit(
 
     lowered_monolithic = _lowered_monolithic(partitioned, qubits_per_node=2)
     names = _instruction_names(lowered_monolithic)
-    assert "bell_pair_phi_plus" in names
+    assert "remote_link_phi_plus" in names
     assert "measure" in names
     assert "reset" in names
     assert _contains_conditional(lowered_monolithic)
@@ -168,7 +168,7 @@ def test_lowered_statevector_matches_original_for_small_multi_segment_regression
 
     lowered_monolithic = _lowered_monolithic(partitioned, qubits_per_node=2)
     names = _instruction_names(lowered_monolithic)
-    assert "bell_pair_phi_plus" in names
+    assert "remote_link_phi_plus" in names
     assert "measure" in names
     assert "reset" in names
     assert _contains_conditional(lowered_monolithic)
