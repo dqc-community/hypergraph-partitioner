@@ -142,6 +142,10 @@ def alloc_receiver(layout: QpuLayout) -> int:
     return qubit
 
 
+def free_receiver(layout: QpuLayout, qubit: int) -> None:
+    layout.free_receiver.add(qubit)
+
+
 def alloc_cbit(state: _CounterState) -> int:
     cbit = state.next_cbit
     state.next_cbit += 1

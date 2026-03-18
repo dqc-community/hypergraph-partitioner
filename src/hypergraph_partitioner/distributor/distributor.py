@@ -22,6 +22,7 @@ from hypergraph_partitioner.qpu_utils import (
     append_shared_instruction,
     build_qpu_layouts,
     finalize_circuit_registers,
+    free_receiver,
     max_existing_cbit,
     num_nodes,
     remap_instruction,
@@ -135,6 +136,7 @@ def _distribute_telegate(op: NonlocalCZOp, state: DistributionState) -> None:
 def _distribute_teledata(op: BoundaryTeleportOp, state: DistributionState) -> None:
     qubit = int(op.qubit)
     source = state.qubit_locations[qubit]
+    source_layout = state.qpu_layouts[source.node]
     dst_layout = state.qpu_layouts[int(op.to_node)]
     dst_qubit = alloc_receiver(dst_layout)
     inst = GateInstruction(name="teleport", qubits=[source.qubit, dst_qubit], params=[], opaque=True)
@@ -145,4 +147,6 @@ def _distribute_teledata(op: BoundaryTeleportOp, state: DistributionState) -> No
         inst,
         state,
     )
+    if source.qubit in source_layout.receiver_slots:
+        free_receiver(source_layout, source.qubit)
     state.qubit_locations[qubit] = PhysicalLocation(node=int(op.to_node), qubit=dst_qubit)

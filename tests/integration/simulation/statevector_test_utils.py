@@ -105,7 +105,7 @@ def final_qubit_locations(
 ) -> dict[int, int]:
     n_blocks = num_blocks(partitioned)
     locations = initial_qubit_locations(partitioned, qpu_data_capacity)
-    free_receivers = {
+    receiver_slots = {
         block: set(
             range(
                 block * 3 * qpu_data_capacity + 2 * qpu_data_capacity,
@@ -114,12 +114,21 @@ def final_qubit_locations(
         )
         for block in range(n_blocks)
     }
+    free_receivers = {
+        block: set(receiver_slots[block])
+        for block in range(n_blocks)
+    }
     for boundary in partitioned.boundaries:
         for teleport in boundary.teleports:
+            qubit = int(teleport.qubit)
+            source = locations[qubit]
+            source_node = int(teleport.from_node)
             destination_node = int(teleport.to_node)
             destination = min(free_receivers[destination_node])
             free_receivers[destination_node].remove(destination)
-            locations[int(teleport.qubit)] = destination
+            if source in receiver_slots[source_node]:
+                free_receivers[source_node].add(source)
+            locations[qubit] = destination
     return locations
 
 

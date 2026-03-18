@@ -166,6 +166,83 @@ def test_build_annotated_circuit_emits_teleport_and_updates_destination() -> Non
     assert any(isinstance(inst, UInstruction) and inst.qubit == 5 for inst in node1[1:])
 
 
+def test_build_annotated_circuit_reuses_receiver_slots_after_back_and_forth_teleports() -> None:
+    """
+    regression ref: https://github.com/dqc-community/hypergraph-partitioner/pull/1/changes#r2949105997
+    """
+    segments = [
+        PartitionedSegment(
+            segment_id=SegmentId(0),
+            instructions=[],
+            partition={QubitId(0): NodeId(0)},
+        ),
+        PartitionedSegment(
+            segment_id=SegmentId(1),
+            instructions=[],
+            partition={QubitId(0): NodeId(1)},
+        ),
+        PartitionedSegment(
+            segment_id=SegmentId(2),
+            instructions=[],
+            partition={QubitId(0): NodeId(0)},
+        ),
+        PartitionedSegment(
+            segment_id=SegmentId(3),
+            instructions=[],
+            partition={QubitId(0): NodeId(1)},
+        ),
+    ]
+    partitioned = PartitionedCircuit(
+        segments=segments,
+        boundaries=[
+            SegmentBoundary(
+                boundary_id=BoundaryId(0),
+                left_segment_id=SegmentId(0),
+                right_segment_id=SegmentId(1),
+                teleports=[
+                    TeleportBoundary(
+                        qubit=QubitId(0),
+                        from_node=NodeId(0),
+                        to_node=NodeId(1),
+                    )
+                ],
+            ),
+            SegmentBoundary(
+                boundary_id=BoundaryId(1),
+                left_segment_id=SegmentId(1),
+                right_segment_id=SegmentId(2),
+                teleports=[
+                    TeleportBoundary(
+                        qubit=QubitId(0),
+                        from_node=NodeId(1),
+                        to_node=NodeId(0),
+                    )
+                ],
+            ),
+            SegmentBoundary(
+                boundary_id=BoundaryId(2),
+                left_segment_id=SegmentId(2),
+                right_segment_id=SegmentId(3),
+                teleports=[
+                    TeleportBoundary(
+                        qubit=QubitId(0),
+                        from_node=NodeId(0),
+                        to_node=NodeId(1),
+                    )
+                ],
+            ),
+        ],
+    )
+
+    distributed = build_annotated_circuit(partitioned, qpu_data_capacity=1)
+
+    names = [
+        str(getattr(inst, "name", getattr(inst, "kind", "")))
+        for inst in distributed.as_monolithic_circuit().instructions
+    ]
+    assert names == ["teleport", "teleport", "teleport"]
+
+
 def test_build_annotated_circuit_preserves_operation_order() -> None:
     prep = _u(0, pi / 2, 0, pi)
     post = _u(0, 0, 0, pi)
