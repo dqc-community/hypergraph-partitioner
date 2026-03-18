@@ -33,6 +33,104 @@ from hypergraph_partitioner.kahypar_partitioner import partition_hypergraph
 from hypergraph_partitioner.preprocessing.normalization import normalize_to_one_qubit_and_cz
 
 
+def partition_circuit(
+    circuit: Circuit,
+    *,
+    k: int,
+    init_seg_size: int,
+    max_hedge_dist: int,
+    config_path: str,
+) -> PartitionedCircuit:
+    normalized = _preprocess(circuit)
+    
+    instructions = _prepare_instructions(normalized.instructions)
+    n_qubits = circuit.qubits()
+
+    initial = _initial_segments(
+        instructions,
+        init_seg_size,
+        n_qubits,
+        k,
+        max_hedge_dist,
+        config_path,
+    )
+    initial = ignore_last_seam(initial)
+
+    def to_hyp(insts: list[InstructionType]) -> Hypergraph:
+        return _build_hypergraph_from_instructions(insts, n_qubits)
+
+    def to_part(hyp: Hypergraph) -> dict[int, int]:
+        return partition_hypergraph(hyp, n_qubits, k, config_path)
+
+    merged = merge_seams(to_hyp, to_part, k, n_qubits, max_hedge_dist, initial)
+    return _annotate_partitioned_circuit(merged)
+
+
+def _preprocess(circuit: Circuit) -> Circuit:
+    res = normalize_to_one_qubit_and_cz(circuit)
+    instructions = push_cz_early(res.instructions)
+    res = Circuit(qregs=res.qregs, cregs=res.cregs, instructions=instructions)
+    return res
+
+
+def _prepare_instructions(instructions: Iterable[InstructionType]) -> list[InstructionType]:
+    """Phase-2 minimal preparation: drop barriers, preserve instruction order."""
+    return [inst for inst in instructions if not isinstance(_unwrap_conditional(inst), BarrierInstruction)]
+
+
+def _initial_segments(
+    instructions: list[InstructionType],
+    init_seg_size: int,
+    n_qubits: int,
+    k: int,
+    max_hedge_dist: int,
+    config_path: str,
+) -> list[Segment]:
+    segments: list[Segment] = []
+    remaining = list(instructions)
+    seg_id = 0
+
+    while remaining:
+        split = _interaction_seam_pos(init_seg_size, remaining)
+        if split == 0 and remaining:
+            split = len(remaining)
+
+        this_insts = remaining[:split]
+        remaining = remaining[split:]
+
+        hyp = _build_hypergraph_from_instructions(this_insts, n_qubits)
+        part = partition_hypergraph(hyp, n_qubits, k, config_path)
+
+        segments.append(
+            Segment(
+                gates=this_insts,
+                hypergraph=hyp,
+                partition=part,
+                seam=SeamCompute(),
+                segment_range=(seg_id, seg_id),
+            )
+        )
+        seg_id += 1
+
+    return segments
+
+
+def _annotate_partitioned_circuit(segments: list[Segment]) -> PartitionedCircuit:
+    """Add the appropriate telegate and teledata annotations to the partitioned segments and boundaries."""
+    public_segments = [_to_partitioned_segment(seg, idx) for idx, seg in enumerate(segments)]
+    boundaries: list[SegmentBoundary] = []
+
+    for idx, seg in enumerate(public_segments):
+        if idx + 1 < len(public_segments):
+            boundary = _build_boundary(seg, public_segments[idx + 1], idx)
+            boundaries.append(boundary)
+
+    return PartitionedCircuit(
+        segments=public_segments,
+        boundaries=boundaries,
+    )
+
+
 def _unwrap_conditional(inst: InstructionType) -> InstructionType:
     if isinstance(inst, ConditionalInstruction):
         return inst.op
@@ -60,12 +158,7 @@ def _target_qubit(inst: InstructionType) -> int | None:
     return qubit if isinstance(qubit, int) else None
 
 
-def prepare_instructions(instructions: Iterable[InstructionType]) -> list[InstructionType]:
-    """Phase-2 minimal preparation: drop barriers, preserve instruction order."""
-    return [inst for inst in instructions if not isinstance(_unwrap_conditional(inst), BarrierInstruction)]
-
-
-def build_hypergraph_from_instructions(
+def _build_hypergraph_from_instructions(
     instructions: list[InstructionType], n_qubits: int
 ) -> Hypergraph:
     """Build hypergraph directly from bosonic instructions."""
@@ -103,109 +196,16 @@ def _interaction_seam_pos(n: int, instructions: list[InstructionType]) -> int:
     return first + 1 + _interaction_seam_pos(n - 1, instructions[first + 1 :])
 
 
-def _initial_segments(
-    instructions: list[InstructionType],
-    init_seg_size: int,
-    n_qubits: int,
-    k: int,
-    max_hedge_dist: int,
-    config_path: str,
-) -> list[Segment]:
-    segments: list[Segment] = []
-    remaining = list(instructions)
-    seg_id = 0
-
-    while remaining:
-        split = _interaction_seam_pos(init_seg_size, remaining)
-        if split == 0 and remaining:
-            split = len(remaining)
-
-        this_insts = remaining[:split]
-        remaining = remaining[split:]
-
-        hyp = build_hypergraph_from_instructions(this_insts, n_qubits)
-        part = partition_hypergraph(hyp, n_qubits, k, config_path)
-
-        segments.append(
-            Segment(
-                gates=this_insts,
-                hypergraph=hyp,
-                partition=part,
-                seam=SeamCompute(),
-                segment_range=(seg_id, seg_id),
-            )
-        )
-        seg_id += 1
-
-    return segments
-
-
-def partition_circuit(
-    circuit: Circuit,
-    *,
-    k: int,
-    init_seg_size: int,
-    max_hedge_dist: int,
-    config_path: str,
-) -> PartitionedCircuit:
-    normalized = _preprocess(circuit)
-    
-    instructions = prepare_instructions(normalized.instructions)
-    n_qubits = circuit.qubits()
-
-    initial = _initial_segments(
-        instructions,
-        init_seg_size,
-        n_qubits,
-        k,
-        max_hedge_dist,
-        config_path,
-    )
-    initial = ignore_last_seam(initial)
-
-    def to_hyp(insts: list[InstructionType]) -> Hypergraph:
-        return build_hypergraph_from_instructions(insts, n_qubits)
-
-    def to_part(hyp: Hypergraph) -> dict[int, int]:
-        return partition_hypergraph(hyp, n_qubits, k, config_path)
-
-    merged = merge_seams(to_hyp, to_part, k, n_qubits, max_hedge_dist, initial)
-    return _annotate_partitioned_circuit(merged)
-
-
-def _preprocess(circuit: Circuit) -> Circuit:
-    res = normalize_to_one_qubit_and_cz(circuit)
-    instructions = push_cz_early(res.instructions)
-    res = Circuit(qregs=res.qregs, cregs=res.cregs, instructions=instructions)
-    return res
-
-
-def count_nonlocal_interactions(circuit: PartitionedCircuit) -> int:
+def _count_nonlocal_interactions(circuit: PartitionedCircuit) -> int:
     return sum(isinstance(op, NonlocalCZOp) for op in iter_annotated_operations(circuit))
 
 
-def count_interactions(instructions: Iterable[InstructionType]) -> int:
+def _count_interactions(instructions: Iterable[InstructionType]) -> int:
     return sum(1 for inst in instructions if _is_interaction(inst))
 
 
-def count_teleports(circuit: PartitionedCircuit) -> int:
+def _count_teleports(circuit: PartitionedCircuit) -> int:
     return sum(len(boundary.teleports) for boundary in circuit.boundaries)
-
-
-def _annotate_partitioned_circuit(segments: list[Segment]) -> PartitionedCircuit:
-    """Add the appropriate telegate and teledata annotations to the partitioned segments and boundaries."""
-    public_segments = [_to_partitioned_segment(seg, idx) for idx, seg in enumerate(segments)]
-    boundaries: list[SegmentBoundary] = []
-
-    for idx, seg in enumerate(public_segments):
-        if idx + 1 < len(public_segments):
-            boundary = _build_boundary(seg, public_segments[idx + 1], idx)
-            boundaries.append(boundary)
-
-    return PartitionedCircuit(
-        segments=public_segments,
-        boundaries=boundaries,
-    )
 
 
 def _to_partitioned_segment(seg: Segment, idx: int) -> PartitionedSegment:

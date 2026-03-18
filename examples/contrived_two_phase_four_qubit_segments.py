@@ -15,7 +15,8 @@ import logging
 
 from bosonic_model.qasm import Translator
 
-from hypergraph_partitioner import count_nonlocal_interactions, count_teleports, partition_circuit
+from hypergraph_partitioner import partition_circuit
+from hypergraph_partitioner.bosonic_pipeline import _count_nonlocal_interactions, _count_teleports
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
 
 
@@ -92,8 +93,8 @@ def main() -> int:
     print("PartitionedCircuit summary")
     print(f"segments={len(result.segments)}")
     print(f"boundaries={len(result.boundaries)}")
-    print(f"nonlocal_czs={count_nonlocal_interactions(result)}")
-    print(f"teleports={count_teleports(result)}")
+    print(f"nonlocal_czs={_count_nonlocal_interactions(result)}")
+    print(f"teleports={_count_teleports(result)}")
     print()
 
     for segment in result.segments:

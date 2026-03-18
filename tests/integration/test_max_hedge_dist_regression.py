@@ -6,8 +6,8 @@ import pytest
 from bosonic_model.qasm import Translator
 
 from hypergraph_partitioner.bosonic_pipeline import (
-    count_nonlocal_interactions,
-    count_teleports,
+    _count_nonlocal_interactions,
+    _count_teleports,
     partition_circuit,
 )
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
@@ -97,8 +97,8 @@ def test_produces_multiple_segments() -> None:
 
     assert len(result.segments) == 5
     assert len(result.boundaries) == 4
-    assert count_nonlocal_interactions(result) == 14
-    assert count_teleports(result) == 8
+    assert _count_nonlocal_interactions(result) == 14
+    assert _count_teleports(result) == 8
     assert dict(result.segments[0].partition) == {0: 0, 1: 1, 2: 1, 3: 0, 4: 0, 5: 1, 6: 0, 7: 1}
     assert dict(result.segments[1].partition) == {0: 0, 1: 1, 2: 1, 3: 1, 4: 0, 5: 0, 6: 1, 7: 0}
     assert dict(result.segments[2].partition) == {0: 0, 1: 1, 2: 1, 3: 0, 4: 0, 5: 1, 6: 1, 7: 0}
@@ -127,10 +127,10 @@ def test_max_hedge_dist_changes_segmentation_regression() -> None:
 
     assert len(short.segments) == 4
     assert len(short.boundaries) == 3
-    assert count_nonlocal_interactions(short) == 15
-    assert count_teleports(short) == 8
+    assert _count_nonlocal_interactions(short) == 15
+    assert _count_teleports(short) == 8
 
     assert len(long.segments) == 5
     assert len(long.boundaries) == 4
-    assert count_nonlocal_interactions(long) == 14
-    assert count_teleports(long) == 8
+    assert _count_nonlocal_interactions(long) == 14
+    assert _count_teleports(long) == 8

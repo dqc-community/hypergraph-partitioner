@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from bosonic_model.qasm import Translator
 
-from hypergraph_partitioner.bosonic_pipeline import build_hypergraph_from_instructions
-from hypergraph_partitioner.hgraph_builder import hypergraph_to_kahypar
+from hypergraph_partitioner.bosonic_pipeline import _build_hypergraph_from_instructions
+from hypergraph_partitioner.kahypar_partitioner.partitioner import _hypergraph_to_kahypar
 from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, QubitVertex
 
 
@@ -20,7 +20,7 @@ def test_build_hypergraph_from_qasm_interaction() -> None:
         """
     )
 
-    hyp = build_hypergraph_from_instructions(circuit.instructions, n_qubits=2)
+    hyp = _build_hypergraph_from_instructions(circuit.instructions, n_qubits=2)
 
     assert set(hyp.qubits) == {0, 1}
     assert len(hyp.interactions) >= 1
@@ -50,7 +50,7 @@ def test_hypergraph_to_kahypar_reconstructs_interaction_nets() -> None:
         },
     )
 
-    indices, nets, weights = hypergraph_to_kahypar(hyp, n_qubits=4)
+    indices, nets, weights = _hypergraph_to_kahypar(hyp, n_qubits=4)
 
     assert indices == [0, 2, 4, 6]
     assert nets == [1, 3, 1, 2, 0, 1]

@@ -8,11 +8,10 @@ from qiskit.quantum_info import Statevector
 
 from hypergraph_partitioner import (
     build_annotated_circuit,
-    count_nonlocal_interactions,
-    count_teleports,
     lower_distributed_circuit,
     partition_circuit,
 )
+from hypergraph_partitioner.bosonic_pipeline import _count_nonlocal_interactions, _count_teleports
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
 from hypergraph_partitioner.models.circuit_annotations import PartitionedCircuit
 from tests.integration.simulation.statevector_test_utils import (
@@ -96,8 +95,8 @@ def test_lowered_statevector_matches_original_for_remote_cz(
         config_path=KAHYPAR_CONFIG,
     )
 
-    assert count_nonlocal_interactions(partitioned) == 1
-    assert count_teleports(partitioned) == 0
+    assert _count_nonlocal_interactions(partitioned) == 1
+    assert _count_teleports(partitioned) == 0
 
     lowered_monolithic = _lowered_monolithic(partitioned, qpu_data_capacity=1)
     names = _instruction_names(lowered_monolithic)
@@ -136,8 +135,8 @@ def test_lowered_statevector_matches_original_for_teleporting_circuit(
     )
 
     assert len(partitioned.segments) == 2
-    assert count_nonlocal_interactions(partitioned) == 2
-    assert count_teleports(partitioned) == 2
+    assert _count_nonlocal_interactions(partitioned) == 2
+    assert _count_teleports(partitioned) == 2
 
     lowered_monolithic = _lowered_monolithic(partitioned, qpu_data_capacity=2)
     names = _instruction_names(lowered_monolithic)
@@ -166,8 +165,8 @@ def test_lowered_statevector_matches_original_for_small_multi_segment_regression
     )
 
     assert len(partitioned.segments) == 2
-    assert count_nonlocal_interactions(partitioned) == 3
-    assert count_teleports(partitioned) == 2
+    assert _count_nonlocal_interactions(partitioned) == 3
+    assert _count_teleports(partitioned) == 2
 
     lowered_monolithic = _lowered_monolithic(partitioned, qpu_data_capacity=2)
     names = _instruction_names(lowered_monolithic)

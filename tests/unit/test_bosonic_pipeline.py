@@ -13,13 +13,13 @@ from qiskit.quantum_info import Operator
 
 from hypergraph_partitioner.bosonic_pipeline import (
     _annotate_partitioned_circuit,
+    _build_hypergraph_from_instructions,
+    _count_interactions,
+    _count_nonlocal_interactions,
+    _count_teleports,
     _preprocess,
     _initial_segments,
     iter_annotated_operations,
-    build_hypergraph_from_instructions,
-    count_interactions,
-    count_nonlocal_interactions,
-    count_teleports,
     partition_circuit,
 )
 from hypergraph_partitioner.segment_merger import ignore_last_seam
@@ -119,9 +119,9 @@ def test_partition_circuit_runs_on_small_qasm() -> None:
     assert isinstance(result, PartitionedCircuit)
     assert len(result.segments) >= 1
     assert len(result.boundaries) == max(0, len(result.segments) - 1)
-    assert count_interactions(circuit.instructions) >= 2
-    assert count_nonlocal_interactions(result) >= 0
-    assert count_teleports(result) >= 0
+    assert _count_interactions(circuit.instructions) >= 2
+    assert _count_nonlocal_interactions(result) >= 0
+    assert _count_teleports(result) >= 0
 
 
 def test_annotated_circuit_orders_boundary_ops_between_segments() -> None:
@@ -172,8 +172,8 @@ def test_initial_segments_splits_by_interaction_count() -> None:
     )
 
     assert len(segments) == 2
-    assert count_interactions(segments[0].gates) == 1
-    assert count_interactions(segments[1].gates) == 1
+    assert _count_interactions(segments[0].gates) == 1
+    assert _count_interactions(segments[1].gates) == 1
     assert segments[0].segment_range == (0, 0)
     assert segments[1].segment_range == (1, 1)
 
@@ -280,11 +280,11 @@ def test_preprocess_step2_keeps_qubit_interactions_in_circuit_order() -> None:
     step1_only = normalize_to_one_qubit_and_cz(circuit)
     preprocessed = push_cz_early(step1_only.instructions)
 
-    step1_hyp = build_hypergraph_from_instructions(
+    step1_hyp = _build_hypergraph_from_instructions(
         step1_only.instructions,
         n_qubits=circuit.qubits(),
     )
-    preprocessed_hyp = build_hypergraph_from_instructions(
+    preprocessed_hyp = _build_hypergraph_from_instructions(
         preprocessed,
         n_qubits=circuit.qubits(),
     )
@@ -361,8 +361,8 @@ def test_annotated_circuit_marks_nonlocal_czs_and_boundary_teleports() -> None:
 
     result = _annotate_partitioned_circuit(segments)
 
-    assert count_nonlocal_interactions(result) == 1
-    assert count_teleports(result) == 1
+    assert _count_nonlocal_interactions(result) == 1
+    assert _count_teleports(result) == 1
     operations = list(iter_annotated_operations(result))
     assert any(isinstance(op, NonlocalCZOp) for op in operations)
     assert any(isinstance(op, BoundaryTeleportOp) for op in operations)

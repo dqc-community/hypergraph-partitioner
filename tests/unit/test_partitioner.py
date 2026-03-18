@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from bosonic_model.qasm import Translator
 
-from hypergraph_partitioner.bosonic_pipeline import build_hypergraph_from_instructions
+from hypergraph_partitioner.bosonic_pipeline import _build_hypergraph_from_instructions
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
 from hypergraph_partitioner.kahypar_partitioner import partition_hypergraph
 from hypergraph_partitioner.segment_merger import (
@@ -347,7 +347,7 @@ def test_count_cuts_detects_cut_from_qasm_hypergraph() -> None:
     )
     seg = Segment(
         gates=circuit.instructions,
-        hypergraph=build_hypergraph_from_instructions(circuit.instructions, n_qubits=2),
+        hypergraph=_build_hypergraph_from_instructions(circuit.instructions, n_qubits=2),
         partition={0: 0, 1: 1},
         seam=SeamStop(),
         segment_range=(0, 0),

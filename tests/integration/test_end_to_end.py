@@ -6,9 +6,9 @@ import pytest
 from bosonic_model.qasm import Translator
 
 from hypergraph_partitioner.bosonic_pipeline import (
-    count_interactions,
-    count_nonlocal_interactions,
-    count_teleports,
+    _count_interactions,
+    _count_nonlocal_interactions,
+    _count_teleports,
     partition_circuit,
 )
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
@@ -25,9 +25,9 @@ def _run_pipeline(qasm_text: str, k: int, init_seg_size: int = 1000) -> tuple[in
         config_path=KAHYPAR_CONFIG,
     )
 
-    interaction_count = count_interactions(circuit.instructions)
-    nonlocal_count = count_nonlocal_interactions(result)
-    teleports = count_teleports(result)
+    interaction_count = _count_interactions(circuit.instructions)
+    nonlocal_count = _count_nonlocal_interactions(result)
+    teleports = _count_teleports(result)
     return interaction_count, nonlocal_count, teleports
 
 

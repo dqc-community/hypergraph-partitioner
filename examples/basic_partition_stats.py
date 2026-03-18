@@ -7,11 +7,11 @@ from pathlib import Path
 
 from bosonic_model.qasm import Translator
 
-from hypergraph_partitioner import (
-    count_interactions,
-    count_nonlocal_interactions,
-    count_teleports,
-    partition_circuit,
+from hypergraph_partitioner import partition_circuit
+from hypergraph_partitioner.bosonic_pipeline import (
+    _count_interactions,
+    _count_nonlocal_interactions,
+    _count_teleports,
 )
 
 qasm_text = """
@@ -41,9 +41,9 @@ partitioned_circuit = partition_circuit(
 
 
 stats = {
-    "interactions": count_interactions(circuit.instructions),
-    "nonlocal": count_nonlocal_interactions(partitioned_circuit),
-    "teleports": count_teleports(partitioned_circuit),
+    "interactions": _count_interactions(circuit.instructions),
+    "nonlocal": _count_nonlocal_interactions(partitioned_circuit),
+    "teleports": _count_teleports(partitioned_circuit),
 }
 
 print(stats)
