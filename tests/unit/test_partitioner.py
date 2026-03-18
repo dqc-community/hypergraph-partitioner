@@ -75,8 +75,8 @@ def test_partition_hypergraph_returns_assignment_for_nonempty_hypergraph() -> No
 
     part = partition_hypergraph(hyp, n_qubits=2, k=2, config_path=KAHYPAR_CONFIG)
 
-    assert set(part.keys()) == {0, 1}
-    assert all(block in {0, 1} for block in part.values())
+    assert part.keys() == {0, 1}
+    assert sorted(part.values()) == [0, 1]
 
 
 def test_ignore_last_seam_marks_last_segment_stop() -> None:
@@ -105,7 +105,8 @@ def test_compute_new_seams_sets_seam_value() -> None:
     updated = _compute_new_seams(2, 100, segs)
 
     assert isinstance(updated[0].seam, SeamValue)
-    assert updated[0].seam.value >= Fraction(0)
+    assert updated[0].seam.value == _get_rho(2, segs[0], segs[1], 100)
+    assert updated[1].seam == segs[1].seam
 
 
 def test_get_rho_is_zero_when_no_qubits_change_blocks() -> None:
