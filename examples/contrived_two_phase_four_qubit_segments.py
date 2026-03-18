@@ -59,7 +59,7 @@ def main() -> int:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    logging.getLogger("hypergraph_partitioner.partitioner").setLevel(logging.DEBUG)
+    logging.getLogger("hypergraph_partitioner.segment_merger").setLevel(logging.DEBUG)
     logging.getLogger("qiskit").setLevel(logging.WARNING)
     logging.getLogger("qiskit.passmanager").setLevel(logging.WARNING)
     logging.getLogger("qiskit.compiler").setLevel(logging.WARNING)

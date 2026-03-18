@@ -28,7 +28,8 @@ from hypergraph_partitioner.models.circuit_annotations import (
 )
 from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, QubitVertex
 from hypergraph_partitioner.models.segment import SeamCompute, Segment
-from hypergraph_partitioner.partitioner import _ignore_last_seam, merge_seams, partition_hypergraph
+from hypergraph_partitioner.segment_merger import ignore_last_seam, merge_seams
+from hypergraph_partitioner.kahypar_partioner import partition_hypergraph
 from hypergraph_partitioner.qiskit_normalization import normalize_to_one_qubit_and_cz
 
 
@@ -160,7 +161,7 @@ def partition_circuit(
         max_hedge_dist,
         config_path,
     )
-    initial = _ignore_last_seam(initial)
+    initial = ignore_last_seam(initial)
 
     def to_hyp(insts: list[InstructionType]) -> Hypergraph:
         return build_hypergraph_from_instructions(insts, n_qubits)

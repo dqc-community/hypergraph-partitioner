@@ -13,7 +13,6 @@ from qiskit.quantum_info import Operator
 
 from hypergraph_partitioner.bosonic_pipeline import (
     _annotate_partitioned_circuit,
-    _ignore_last_seam,
     _preprocess,
     _initial_segments,
     iter_annotated_operations,
@@ -23,6 +22,7 @@ from hypergraph_partitioner.bosonic_pipeline import (
     count_teleports,
     partition_circuit,
 )
+from hypergraph_partitioner.segment_merger import ignore_last_seam
 from hypergraph_partitioner.cz_commutation import push_cz_early
 from hypergraph_partitioner.config import KAHYPAR_CONFIG
 from hypergraph_partitioner.models.circuit_annotations import (
@@ -432,7 +432,7 @@ def test_real_circuit_initial_segments_annotate_multiple_segments_and_teleports(
         max_hedge_dist=100,
         config_path=KAHYPAR_CONFIG,
     )
-    result = _annotate_partitioned_circuit(_ignore_last_seam(initial))
+    result = _annotate_partitioned_circuit(ignore_last_seam(initial))
 
     teleport_ops = [
         op for op in iter_annotated_operations(result) if isinstance(op, BoundaryTeleportOp)
