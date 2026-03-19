@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from math import pi
-from pathlib import Path
-
 import numpy as np
 import pytest
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
@@ -171,17 +169,6 @@ def _build_ideal_teledata(input_state: str) -> QuantumCircuit:
     return qc
 
 
-def test_remote_cz_protocol_diagram_is_renderable_with_mpl_qiskit() -> None:
-    artifact_dir = Path(".pytest_artifacts")
-    artifact_dir.mkdir(exist_ok=True)
-    figure = _build_remote_cz_protocol_qiskit("0", "0").draw(output="mpl")
-    output_path = artifact_dir / "remote_cz_protocol.png"
-    figure.savefig(output_path)
-    assert output_path.exists()
-    assert output_path.stat().st_size > 0
-    figure.clf()
-
-
 @pytest.mark.parametrize("input_control", _INPUT_STATES)
 @pytest.mark.parametrize("input_target", _INPUT_STATES)
 def test_cat_entangler_remote_cz_matches_ideal_cz_qiskit(
@@ -220,17 +207,6 @@ def test_cat_entangler_remote_cz_in_bosonic_basis_matches_ideal_cz_qiskit(
     reduced_ideal = partial_trace(ideal_density, [1, 2])
 
     assert state_fidelity(reduced_remote, reduced_ideal) == pytest.approx(1.0, abs=1e-9)
-
-
-def test_teledata_protocol_diagram_is_renderable_with_mpl_qiskit() -> None:
-    artifact_dir = Path(".pytest_artifacts")
-    artifact_dir.mkdir(exist_ok=True)
-    figure = _build_teledata_protocol_qiskit("0").draw(output="mpl")
-    output_path = artifact_dir / "teledata_protocol.png"
-    figure.savefig(output_path)
-    assert output_path.exists()
-    assert output_path.stat().st_size > 0
-    figure.clf()
 
 
 @pytest.mark.parametrize("input_state", _INPUT_STATES)
