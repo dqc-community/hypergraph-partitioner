@@ -56,6 +56,36 @@ def _contains_conditional(circuit: Circuit) -> bool:
 @pytest.mark.integration
 @pytest.mark.parametrize("input_control", INPUT_STATES)
 @pytest.mark.parametrize("input_target", INPUT_STATES)
+def test_lowered_statevector_matches_original_for_local_cz(
+    input_control: str, input_target: str
+) -> None:
+    circuit = remote_cz_circuit(input_control, input_target)
+    partitioned = _partition_to_partitioned_circuit(
+        circuit,
+        nodes=1,
+        init_seg_size=10,
+        max_hedge_dist=100,
+    )
+
+    lowered_monolithic = _lowered_monolithic(partitioned, qubits_per_node=2)
+    names = _instruction_names(lowered_monolithic)
+    assert "cz" not in names
+    assert "rzz" in names
+    assert "remote_link_phi_plus" not in names
+    assert "measure" not in names
+    assert "reset" not in names
+
+    lowered = _simulate_statevector(_lowered_to_qiskit(partitioned, qubits_per_node=2))
+    original = _simulate_statevector(
+        embedded_original_to_qiskit(circuit, partitioned, qubits_per_node=2),
+    )
+
+    assert_statevectors_equivalent(lowered, original)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("input_control", INPUT_STATES)
+@pytest.mark.parametrize("input_target", INPUT_STATES)
 def test_lowered_statevector_matches_original_for_local_only(
     input_control: str, input_target: str
 ) -> None:
