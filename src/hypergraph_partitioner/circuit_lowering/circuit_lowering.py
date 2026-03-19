@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import pi
 
-from bosonic_model import Circuit, ConditionalInstruction, DistributedCircuit, GateInstruction, InstructionType
+from bosonic_model import (
+    Circuit,
+    ConditionalInstruction,
+    CzInstruction,
+    DistributedCircuit,
+    GateInstruction,
+    InstructionType,
+    RzzInstruction,
+    UInstruction,
+)
 
 from hypergraph_partitioner.qpu_utils import (
     QpuLayout,
@@ -50,6 +60,8 @@ def lower_distributed_circuit(distributed: DistributedCircuit) -> DistributedCir
             _lower_remote_cz_instruction(inst, distributed.qubits_per_node, state)
         elif _is_teleport(inst):
             _lower_teleport_instruction(inst, distributed.qubits_per_node, state)
+        elif _is_local_cz(inst, distributed.qubits_per_node):
+            _lower_local_cz_instruction(inst, distributed.qubits_per_node, state)
         else:
             node = single_node_for_qubits(inst.qubits, distributed.qubits_per_node)
             append_instruction(state.circuits, state.instruction_index, node, inst, state)
@@ -206,6 +218,56 @@ def _lower_teleport_instruction(
     free_comm(source_layout, comm_src)
 
 
+def _lower_local_cz_instruction(
+    inst: InstructionType,
+    qubits_per_node: dict[int, list[int]],
+    state: CircuitLoweringState,
+) -> None:
+    outer_condition = inst.condition if isinstance(inst, ConditionalInstruction) else None
+    inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
+    if not _is_cz_instruction(inner):
+        raise TypeError(f"expected cz gate, got {type(inner).__name__}")
+
+    control_qubit, target_qubit = list(inner.qubits[:2])
+    node = single_node_for_qubits([control_qubit, target_qubit], qubits_per_node)
+    for emitted in _emit_local_cz_decomposition(control_qubit, target_qubit):
+        append_instruction(
+            state.circuits,
+            state.instruction_index,
+            node,
+            conditionally_wrap_instruction(emitted, outer_condition),
+            state,
+        )
+
+
+def _emit_local_cz_decomposition(control_qubit: int, target_qubit: int) -> list[InstructionType]:
+    return [
+        UInstruction(
+            qubit=control_qubit,
+            qubits=[control_qubit],
+            theta=0,
+            phi=0,
+            lam=-pi / 2,
+            params=[0, 0, -pi / 2],
+        ),
+        UInstruction(
+            qubit=target_qubit,
+            qubits=[target_qubit],
+            theta=0,
+            phi=0,
+            lam=-pi / 2,
+            params=[0, 0, -pi / 2],
+        ),
+        RzzInstruction(
+            a=control_qubit,
+            b=target_qubit,
+            qubits=[control_qubit, target_qubit],
+            theta=pi / 2,
+            params=[pi / 2],
+        ),
+    ]
+
+
 def _is_remote_cz(inst: InstructionType) -> bool:
     inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
     return isinstance(inner, GateInstruction) and inner.name == "remote_cz"
@@ -214,3 +276,20 @@ def _is_remote_cz(inst: InstructionType) -> bool:
 def _is_teleport(inst: InstructionType) -> bool:
     inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
     return isinstance(inner, GateInstruction) and inner.name == "teleport"
+
+
+def _is_local_cz(inst: InstructionType, qubits_per_node: dict[int, list[int]]) -> bool:
+    inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
+    if not _is_cz_instruction(inner):
+        return False
+    try:
+        single_node_for_qubits(inner.qubits, qubits_per_node)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_cz_instruction(inst: InstructionType) -> bool:
+    return isinstance(inst, CzInstruction) or (
+        isinstance(inst, GateInstruction) and inst.name == "cz"
+    )
