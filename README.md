@@ -12,10 +12,6 @@ The repo is a Python modernization Pablo Andres-Martinez's landmark 2019 paper o
 from bosonic_model.qasm import Translator
 
 from hypergraph_partitioner import (
-    annotated_to_distributed_circuit,
-    count_interactions,
-    count_nonlocal_interactions,
-    count_teleports,
     lower_distributed_circuit,
     partition_circuit,
 )
@@ -30,16 +26,12 @@ cz q[0], q[3];
 
 circuit = Translator().from_qasm(qasm_text)
 
-result = partition_circuit(
+distributed_symbolic = partition_circuit(
     circuit,
     nodes=2,
+    qubits_per_node=4,
     init_seg_size=10,
     max_hedge_dist=100,
-)
-
-distributed_symbolic = annotated_to_distributed_circuit(
-    result,
-    qubits_per_node=4,
 )
 
 lowered = lower_distributed_circuit(distributed_symbolic)
