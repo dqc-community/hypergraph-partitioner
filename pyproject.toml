@@ -26,8 +26,8 @@ build-backend = "hatchling.build"
 packages = ["src/hypergraph_partitioner"]
 
 [tool.uv.sources]
-bosonic-converters = { path = "../dqcomp/packages/bosonic-converters", editable = true }
-bosonic-model = { path = "../dqcomp/packages/bosonic-model", editable = true }
+bosonic-converters = { path = "../../packages/bosonic-converters", editable = true }
+bosonic-model = { path = "../../packages/bosonic-model", editable = true }
 
 [tool.ruff]
 line-length = 100
