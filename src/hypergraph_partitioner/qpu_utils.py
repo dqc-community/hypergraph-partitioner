@@ -79,7 +79,7 @@ def max_cbit_in_instruction(inst: InstructionType) -> int:
     if isinstance(inst, MeasureInstruction):
         return inst.cbit
     if isinstance(inst, ConditionalInstruction):
-        return max(inst.condition.cbit, max_cbit_in_instruction(inst.op))
+        return max(inst.condition.creg_base, max_cbit_in_instruction(inst.op))
     return -1
 
 
@@ -230,11 +230,11 @@ def remap_instruction(
     cbit_map = cbit_map or {}
     if isinstance(inst, ConditionalInstruction):
         mapped_op = remap_instruction(inst.op, qubit_map, cbit_map)
-        mapped_cbit = cbit_map.get(inst.condition.cbit, inst.condition.cbit)
+        mapped_cbit = cbit_map.get(inst.condition.creg_base, inst.condition.creg_base)
         return inst.model_copy(
             update={
                 "qubits": [qubit_map.get(q, q) for q in inst.qubits],
-                "condition": Condition(cbit=mapped_cbit, value=inst.condition.value),
+                "condition": Condition(creg_base=mapped_cbit, creg_size=inst.condition.creg_size, creg_value=inst.condition.creg_value),
                 "op": mapped_op,
             }
         )

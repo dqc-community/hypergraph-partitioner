@@ -92,7 +92,7 @@ def test_annotated_statevector_matches_original_for_conditional_remote_cz() -> N
         instructions=[
             *with_preparations(Circuit(), [(0, "+"), (1, "+")]).instructions,
             ConditionalInstruction(
-                condition=Condition(cbit=0, value=True),
+                condition=Condition(creg_base=0, creg_size=1, creg_value=1),
                 op=CzInstruction(control=0, target=1, qubits=[0, 1]),
             ),
         ],

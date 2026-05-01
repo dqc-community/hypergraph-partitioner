@@ -102,7 +102,7 @@ def test_build_annotated_circuit_emits_remote_cz_symbolically() -> None:
 
 def test_build_annotated_circuit_preserves_condition_on_remote_cz() -> None:
     conditional_cz = ConditionalInstruction(
-        condition=Condition(cbit=0, value=True),
+        condition=Condition(creg_base=0, creg_size=1, creg_value=1),
         op=CzInstruction(control=0, target=1, qubits=[0, 1]),
     )
     segment = PartitionedSegment(
