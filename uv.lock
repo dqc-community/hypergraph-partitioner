@@ -18,33 +18,28 @@ wheels = [
 [[package]]
 name = "bosonic-converters"
 version = "0.1.0"
-source = { editable = "../dqcomp/packages/bosonic-converters" }
+source = { registry = "https://test.pypi.org/simple" }
 dependencies = [
     { name = "bosonic-model" },
     { name = "numpy" },
     { name = "qiskit" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "bosonic-model", editable = "../dqcomp/packages/bosonic-model" },
-    { name = "numpy", specifier = ">=1.26,<2.3.4" },
-    { name = "qiskit", specifier = ">=2.2.2" },
+sdist = { url = "https://test-files.pythonhosted.org/packages/f8/41/acab3f08884018f278bc3152e8f1aabf17c536cef7c4c588667739c46d0f/bosonic_converters-0.1.0.tar.gz", hash = "sha256:102195267c1735718168e59954f73a0fc13ce125a45e6441156d6b60e6cb450c", size = 4909, upload-time = "2026-04-08T22:26:26.229Z" }
+wheels = [
+    { url = "https://test-files.pythonhosted.org/packages/f2/fb/c8893893dcb137255fb0626c24cb0e92e4b9274d63eb9003e68114c95469/bosonic_converters-0.1.0-py3-none-any.whl", hash = "sha256:b377a5cf22c8bcf0690792f8144704d9de8ef0254ae93ca8cd05335d339ca0c8", size = 5721, upload-time = "2026-04-08T22:26:24.563Z" },
 ]
 
 [[package]]
 name = "bosonic-model"
 version = "0.1.1"
-source = { editable = "../dqcomp/packages/bosonic-model" }
+source = { registry = "https://test.pypi.org/simple" }
 dependencies = [
     { name = "lark" },
     { name = "pydantic" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "lark", specifier = ">=1.2.2" },
-    { name = "pydantic", specifier = ">=2.7.0" },
+sdist = { url = "https://test-files.pythonhosted.org/packages/1d/21/bef0ebf8bca7562d8dfeb1465767e7771946d67809acb7d073377abe013a/bosonic_model-0.1.1.tar.gz", hash = "sha256:93ffba92fdaf1460f1438603e4b60c5dfbe497aa4eb9a77c5fb927ad7e0bc273", size = 10168, upload-time = "2026-04-08T22:26:21.353Z" }
+wheels = [
+    { url = "https://test-files.pythonhosted.org/packages/66/06/6e5a3cc5ef786a9ff059c15aa1b32316f4c3da034be8d9c258ab03bc0f72/bosonic_model-0.1.1-py3-none-any.whl", hash = "sha256:e3da53e5f46da82510a28dd6a1c7dcfc71c43039e9bc666dfaa362eca998b622", size = 12489, upload-time = "2026-04-08T22:26:19.644Z" },
 ]
 
 [[package]]
@@ -300,12 +295,12 @@ wheels = [
 
 [[package]]
 name = "hypergraph-partitioner"
-version = "0.1.0"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "bosonic-converters" },
     { name = "bosonic-model" },
-    { name = "kahypar" },
+    { name = "kahypar", marker = "sys_platform != 'win32'" },
     { name = "pydantic" },
     { name = "qiskit" },
     { name = "qiskit-aer" },
@@ -325,9 +320,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bosonic-converters", editable = "../dqcomp/packages/bosonic-converters" },
-    { name = "bosonic-model", editable = "../dqcomp/packages/bosonic-model" },
-    { name = "kahypar", specifier = "==1.3.2" },
+    { name = "bosonic-converters", specifier = ">=0.1.0,<0.2.0", index = "https://test.pypi.org/simple" },
+    { name = "bosonic-model", specifier = ">=0.1.1,<0.2.0", index = "https://test.pypi.org/simple" },
+    { name = "kahypar", marker = "sys_platform != 'win32'", specifier = "==1.3.2" },
     { name = "pydantic", specifier = ">=2.7.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.3" },
     { name = "qiskit", specifier = ">=2.2.2" },

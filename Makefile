@@ -1,4 +1,4 @@
-.PHONY: build publish run test
+.PHONY: build debug-local-deps publish run test
 
 ### PyPi config
 DIST_DIR := dist
@@ -24,6 +24,11 @@ run:
 
 test:
 	uv run --extra dev python -m pytest -q
+
+debug-local-deps:
+	uv pip install --no-deps \
+		-e ../dqcomp/packages/bosonic-model \
+		-e ../dqcomp/packages/bosonic-converters
 
 build:
 	rm -rf $(DIST_DIR)

@@ -1,6 +1,6 @@
 [project]
 name = "hypergraph-partitioner"
-version = "0.1.1"
+version = "0.1.2"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -26,8 +26,13 @@ build-backend = "hatchling.build"
 packages = ["src/hypergraph_partitioner"]
 
 [tool.uv.sources]
-bosonic-converters = { path = "../../packages/bosonic-converters", editable = true }
-bosonic-model = { path = "../../packages/bosonic-model", editable = true }
+bosonic-converters = { index = "testpypi" }
+bosonic-model = { index = "testpypi" }
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple"
+explicit = true
 
 [tool.ruff]
 line-length = 100
