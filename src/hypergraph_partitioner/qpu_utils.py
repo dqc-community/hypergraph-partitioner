@@ -100,11 +100,12 @@ def make_condition(cbit: int, value: bool) -> Condition:
 
 def build_qpu_layouts(qubits_per_node: int, n_nodes: int) -> dict[int, QpuLayout]:
     qpu_layouts: dict[int, QpuLayout] = {}
+    physical_slots_per_node = qubits_per_node + 2
     for node in range(n_nodes):
-        base = node * 3 * qubits_per_node
+        base = node * physical_slots_per_node
         data_slots = list(range(base, base + qubits_per_node))
-        comm_slots = list(range(base + qubits_per_node, base + 2 * qubits_per_node))
-        receiver_slots = list(range(base + 2 * qubits_per_node, base + 3 * qubits_per_node))
+        comm_slots = list(range(base + qubits_per_node, base + qubits_per_node + 2))
+        receiver_slots: list[int] = []
         qpu_layouts[node] = QpuLayout(
             node=node,
             data_slots=data_slots,
@@ -119,14 +120,13 @@ def build_qpu_layouts(qubits_per_node: int, n_nodes: int) -> dict[int, QpuLayout
 def layouts_from_qubits_per_node(qubits_per_node: dict[int, list[int]]) -> dict[int, QpuLayout]:
     layouts: dict[int, QpuLayout] = {}
     for node, qubits in qubits_per_node.items():
-        if len(qubits) % 3 != 0:
+        if len(qubits) < 3:
             raise ValueError(
-                f"node {node} has {len(qubits)} qubits; expected a multiple of 3 for data/comm/receiver layout"
+                f"node {node} has {len(qubits)} qubits; expected at least one data qubit and two aux qubits"
             )
-        capacity = len(qubits) // 3
-        data_slots = list(qubits[:capacity])
-        comm_slots = list(qubits[capacity : 2 * capacity])
-        receiver_slots = list(qubits[2 * capacity :])
+        data_slots = list(qubits[:-2])
+        comm_slots = list(qubits[-2:])
+        receiver_slots: list[int] = []
         layouts[node] = QpuLayout(
             node=node,
             data_slots=data_slots,

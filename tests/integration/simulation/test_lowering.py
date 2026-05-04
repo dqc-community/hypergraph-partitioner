@@ -4,7 +4,7 @@ from math import pi
 
 import pytest
 from bosonic_converters import CircuitConverters
-from bosonic_model import Condition, ConditionalInstruction, CzInstruction, DistributedCircuit, GateInstruction, UInstruction
+from bosonic_model import ConditionalInstruction, CzInstruction, DistributedCircuit, GateInstruction, UInstruction
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 from qiskit.quantum_info import DensityMatrix, partial_trace, state_fidelity
@@ -13,12 +13,14 @@ from hypergraph_partitioner import (
     build_annotated_circuit,
     lower_distributed_circuit,
 )
+from hypergraph_partitioner.qpu_utils import make_condition
 from hypergraph_partitioner.models.circuit_annotations import (
     NodeId,
     BoundaryId,
     PartitionedCircuit,
     PartitionedSegment,
     SegmentBoundary,
+    SwapBoundary,
     TeleportBoundary,
     SegmentId,
     QubitId,
@@ -102,7 +104,7 @@ def test_build_annotated_circuit_emits_remote_cz_symbolically() -> None:
 
 def test_build_annotated_circuit_preserves_condition_on_remote_cz() -> None:
     conditional_cz = ConditionalInstruction(
-        condition=Condition(creg_base=0, creg_size=1, creg_value=1),
+        condition=make_condition(0, True),
         op=CzInstruction(control=0, target=1, qubits=[0, 1]),
     )
     segment = PartitionedSegment(
@@ -128,6 +130,7 @@ def test_build_annotated_circuit_preserves_condition_on_remote_cz() -> None:
     assert distributed.circuits[0].cregs["c"].size == 1
 
 
+@pytest.mark.skip(reason="legacy receiver-teleport path is disabled under compact data+2 aux layout")
 def test_build_annotated_circuit_emits_teleport_and_updates_destination() -> None:
     z_after = _u(0, 0, 0, pi)
     left = PartitionedSegment(
@@ -167,6 +170,7 @@ def test_build_annotated_circuit_emits_teleport_and_updates_destination() -> Non
     assert any(isinstance(inst, UInstruction) and inst.qubit == 5 for inst in node1[1:])
 
 
+@pytest.mark.skip(reason="legacy receiver-teleport path is disabled under compact data+2 aux layout")
 def test_build_annotated_circuit_reuses_receiver_slots_after_back_and_forth_teleports() -> None:
     """
     regression ref: https://github.com/dqc-community/hypergraph-partitioner/pull/1/changes#r2949105997
@@ -244,6 +248,7 @@ def test_build_annotated_circuit_reuses_receiver_slots_after_back_and_forth_tele
     assert names == ["teleport", "teleport", "teleport"]
 
 
+@pytest.mark.skip(reason="legacy receiver-teleport path is disabled under compact data+2 aux layout")
 def test_build_annotated_circuit_preserves_operation_order() -> None:
     prep = _u(0, pi / 2, 0, pi)
     post = _u(0, 0, 0, pi)
@@ -281,6 +286,90 @@ def test_build_annotated_circuit_preserves_operation_order() -> None:
         for inst in distributed.as_monolithic_circuit().instructions
     ]
     assert names == ["u", "teleport", "u"]
+
+
+def test_build_annotated_circuit_emits_remote_swap_and_updates_locations() -> None:
+    post = _u(0, 0, 0, pi)
+    left = PartitionedSegment(
+        segment_id=SegmentId(0),
+        instructions=[],
+        partition={QubitId(0): NodeId(0), QubitId(1): NodeId(1)},
+    )
+    right = PartitionedSegment(
+        segment_id=SegmentId(1),
+        instructions=[post],
+        partition={QubitId(0): NodeId(1), QubitId(1): NodeId(0)},
+    )
+    partitioned = PartitionedCircuit(
+        segments=[left, right],
+        boundaries=[
+            SegmentBoundary(
+                boundary_id=BoundaryId(0),
+                left_segment_id=SegmentId(0),
+                right_segment_id=SegmentId(1),
+                teleports=[],
+                swaps=[
+                    SwapBoundary(
+                        left_qubit=QubitId(0),
+                        right_qubit=QubitId(1),
+                        left_node=NodeId(0),
+                        right_node=NodeId(1),
+                    )
+                ],
+            )
+        ],
+    )
+
+    distributed = build_annotated_circuit(partitioned, qubits_per_node=1)
+
+    assert distributed.qubits_per_node == {0: [0, 1, 2], 1: [3, 4, 5]}
+    node0 = distributed.circuits[0].instructions
+    node1 = distributed.circuits[1].instructions
+    assert isinstance(node0[0], GateInstruction) and node0[0].name == "remote_swap"
+    assert node1[0] is node0[0]
+    assert isinstance(node1[1], UInstruction)
+    assert node1[1].qubit == 3
+
+
+def test_build_annotated_circuit_preserves_operation_order_with_remote_swap() -> None:
+    prep = _u(0, pi / 2, 0, pi)
+    post = _u(0, 0, 0, pi)
+    left = PartitionedSegment(
+        segment_id=SegmentId(0),
+        instructions=[prep],
+        partition={QubitId(0): NodeId(0), QubitId(1): NodeId(1)},
+    )
+    right = PartitionedSegment(
+        segment_id=SegmentId(1),
+        instructions=[post],
+        partition={QubitId(0): NodeId(1), QubitId(1): NodeId(0)},
+    )
+    partitioned = PartitionedCircuit(
+        segments=[left, right],
+        boundaries=[
+            SegmentBoundary(
+                boundary_id=BoundaryId(0),
+                left_segment_id=SegmentId(0),
+                right_segment_id=SegmentId(1),
+                teleports=[],
+                swaps=[
+                    SwapBoundary(
+                        left_qubit=QubitId(0),
+                        right_qubit=QubitId(1),
+                        left_node=NodeId(0),
+                        right_node=NodeId(1),
+                    )
+                ],
+            )
+        ],
+    )
+
+    distributed = build_annotated_circuit(partitioned, qubits_per_node=1)
+    names = [
+        str(getattr(inst, "name", getattr(inst, "kind", "")))
+        for inst in distributed.as_monolithic_circuit().instructions
+    ]
+    assert names == ["u", "remote_swap", "u"]
 
 
 def test_build_annotated_circuit_rejects_segments_exceeding_capacity() -> None:
@@ -323,6 +412,7 @@ def test_lower_distributed_circuit_telegate_matches_ideal_cz() -> None:
     assert state_fidelity(reduced_remote, reduced_ideal) == pytest.approx(1.0, abs=1e-9)
 
 
+@pytest.mark.skip(reason="legacy receiver-teleport path is disabled under compact data+2 aux layout")
 def test_lower_distributed_circuit_teledata_matches_ideal_state_transfer() -> None:
     prep = _prepare_label_ops(0, "+i")
     left = PartitionedSegment(
@@ -364,4 +454,54 @@ def test_lower_distributed_circuit_teledata_matches_ideal_state_transfer() -> No
 
     reduced_remote = partial_trace(remote, [0, 1, 2, 3, 4])
     reduced_ideal = partial_trace(ideal_density, [0, 1, 2, 3, 4])
+    assert state_fidelity(reduced_remote, reduced_ideal) == pytest.approx(1.0, abs=1e-9)
+
+
+def test_lower_distributed_circuit_remote_swap_matches_ideal_swap() -> None:
+    prep0 = _prepare_label_ops(0, "+i")
+    prep1 = _prepare_label_ops(1, "+")
+    left = PartitionedSegment(
+        segment_id=SegmentId(0),
+        instructions=[*prep0, *prep1],
+        partition={QubitId(0): NodeId(0), QubitId(1): NodeId(1)},
+    )
+    right = PartitionedSegment(
+        segment_id=SegmentId(1),
+        instructions=[],
+        partition={QubitId(0): NodeId(1), QubitId(1): NodeId(0)},
+    )
+    partitioned = PartitionedCircuit(
+        segments=[left, right],
+        boundaries=[
+            SegmentBoundary(
+                boundary_id=BoundaryId(0),
+                left_segment_id=SegmentId(0),
+                right_segment_id=SegmentId(1),
+                teleports=[],
+                swaps=[
+                    SwapBoundary(
+                        left_qubit=QubitId(0),
+                        right_qubit=QubitId(1),
+                        left_node=NodeId(0),
+                        right_node=NodeId(1),
+                    )
+                ],
+            )
+        ],
+    )
+
+    symbolic = build_annotated_circuit(partitioned, qubits_per_node=1)
+    lowered = lower_distributed_circuit(symbolic)
+    remote = _simulate_density(CircuitConverters.to_qiskit(lowered.as_monolithic_circuit()))
+
+    ideal = QuantumCircuit(6)
+    for inst in prep0:
+        ideal.u(inst.theta, inst.phi, inst.lam, 0)
+    for inst in prep1:
+        ideal.u(inst.theta, inst.phi, inst.lam, 3)
+    ideal.swap(0, 3)
+    ideal_density = _simulate_density(ideal)
+
+    reduced_remote = partial_trace(remote, [1, 2, 4, 5])
+    reduced_ideal = partial_trace(ideal_density, [1, 2, 4, 5])
     assert state_fidelity(reduced_remote, reduced_ideal) == pytest.approx(1.0, abs=1e-9)

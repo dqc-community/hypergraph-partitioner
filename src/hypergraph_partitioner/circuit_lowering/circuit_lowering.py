@@ -13,6 +13,7 @@ from bosonic_model import (
     GateInstruction,
     InstructionType,
     RzzInstruction,
+    SwapInstruction,
     UInstruction,
 )
 
@@ -59,6 +60,8 @@ def lower_distributed_circuit(distributed: DistributedCircuit) -> DistributedCir
     for inst in monolithic.instructions:
         if _is_remote_cz(inst):
             _lower_remote_cz_instruction(inst, distributed.qubits_per_node, state)
+        elif _is_remote_swap(inst):
+            _lower_remote_swap_instruction(inst, distributed.qubits_per_node, state)
         elif _is_teleport(inst):
             _lower_teleport_instruction(inst, distributed.qubits_per_node, state)
         elif _is_local_cz(inst, distributed.qubits_per_node):
@@ -219,6 +222,138 @@ def _lower_teleport_instruction(
         state.scheduler.finish(operation)
 
 
+def _lower_remote_swap_instruction(
+    inst: InstructionType,
+    qubits_per_node: dict[int, list[int]],
+    state: CircuitLoweringState,
+) -> None:
+    outer_condition = inst.condition if isinstance(inst, ConditionalInstruction) else None
+    inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
+    if not isinstance(inner, GateInstruction):
+        raise TypeError(f"expected remote_swap gate, got {type(inner).__name__}")
+
+    left_qubit, right_qubit = inner.qubits[:2]
+    left_node = node_for_qubit(left_qubit, qubits_per_node)
+    right_node = node_for_qubit(right_qubit, qubits_per_node)
+    if left_node == right_node:
+        append_instruction(
+            state.circuits,
+            state.instruction_index,
+            left_node,
+            conditionally_wrap_instruction(
+                SwapInstruction(a=left_qubit, b=right_qubit, qubits=[left_qubit, right_qubit]),
+                outer_condition,
+            ),
+            state,
+        )
+        return
+
+    operation = state.scheduler.begin((left_node, right_node))
+    try:
+        left_comm = operation.alloc_comm(left_node, "remote_swap.first_source")
+        right_recv = operation.alloc_comm(right_node, "remote_swap.first_destination")
+        right_comm = operation.alloc_comm(right_node, "remote_swap.second_source")
+
+        first_c_data = alloc_cbit(state)
+        first_c_comm = alloc_cbit(state)
+        second_c_data = alloc_cbit(state)
+        second_c_comm = alloc_cbit(state)
+
+        _emit_remote_teledata(
+            data_src=left_qubit,
+            comm_src=left_comm,
+            comm_dst=right_recv,
+            source_node=left_node,
+            destination_node=right_node,
+            c_data=first_c_data,
+            c_comm=first_c_comm,
+            outer_condition=outer_condition,
+            state=state,
+        )
+        _emit_remote_teledata(
+            data_src=right_qubit,
+            comm_src=right_comm,
+            comm_dst=left_qubit,
+            source_node=right_node,
+            destination_node=left_node,
+            c_data=second_c_data,
+            c_comm=second_c_comm,
+            outer_condition=outer_condition,
+            state=state,
+        )
+
+        local_swap = SwapInstruction(
+            a=right_recv,
+            b=right_qubit,
+            qubits=[right_recv, right_qubit],
+        )
+        append_instruction(
+            state.circuits,
+            state.instruction_index,
+            right_node,
+            conditionally_wrap_instruction(local_swap, outer_condition),
+            state,
+        )
+    finally:
+        state.scheduler.finish(operation)
+
+
+def _emit_remote_teledata(
+    *,
+    data_src: int,
+    comm_src: int,
+    comm_dst: int,
+    source_node: int,
+    destination_node: int,
+    c_data: int,
+    c_comm: int,
+    outer_condition,
+    state: CircuitLoweringState,
+) -> None:
+    remote_bell = GateInstruction(
+        name="remote_link_phi_plus",
+        qubits=[comm_src, comm_dst],
+        params=[],
+        opaque=True,
+    )
+    append_shared_instruction(
+        state.circuits,
+        state.instruction_index,
+        (source_node, destination_node),
+        conditionally_wrap_instruction(remote_bell, outer_condition),
+        state,
+    )
+
+    source_body: list[InstructionType] = []
+    destination_body: list[InstructionType] = []
+    _emit_teledata_protocol(
+        source_body,
+        data_src=data_src,
+        comm_src=comm_src,
+        comm_dst=comm_dst,
+        c_data=c_data,
+        c_comm=c_comm,
+        include_bell=False,
+        dest_instructions=destination_body,
+    )
+    for emitted in source_body:
+        append_instruction(
+            state.circuits,
+            state.instruction_index,
+            source_node,
+            conditionally_wrap_instruction(emitted, outer_condition),
+            state,
+        )
+    for emitted in destination_body:
+        append_instruction(
+            state.circuits,
+            state.instruction_index,
+            destination_node,
+            conditionally_wrap_instruction(emitted, outer_condition),
+            state,
+        )
+
+
 def _lower_local_cz_instruction(
     inst: InstructionType,
     qubits_per_node: dict[int, list[int]],
@@ -277,6 +412,11 @@ def _is_remote_cz(inst: InstructionType) -> bool:
 def _is_teleport(inst: InstructionType) -> bool:
     inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
     return isinstance(inner, GateInstruction) and inner.name == "teleport"
+
+
+def _is_remote_swap(inst: InstructionType) -> bool:
+    inner = inst.op if isinstance(inst, ConditionalInstruction) else inst
+    return isinstance(inner, GateInstruction) and inner.name == "remote_swap"
 
 
 def _is_local_cz(inst: InstructionType, qubits_per_node: dict[int, list[int]]) -> bool:
