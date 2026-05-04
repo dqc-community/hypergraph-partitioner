@@ -6,7 +6,6 @@ from math import pi
 
 from bosonic_model import (
     Circuit,
-    Condition,
     ConditionalInstruction,
     GateInstruction,
     InstructionType,
@@ -16,6 +15,7 @@ from bosonic_model import (
     RzzInstruction,
     UInstruction,
 )
+from hypergraph_partitioner.qpu_utils import make_condition
 
 
 def _registers(
@@ -154,7 +154,7 @@ def _emit_telegate_protocol(
     instructions.append(ResetInstruction(qubit=comm_ctrl, qubits=[comm_ctrl]))
     target_instructions.append(
         ConditionalInstruction(
-            condition=Condition(creg_base=c_start, creg_size=1, creg_value=1),
+            condition=make_condition(c_start, True),
             op=UInstruction(
                 qubit=comm_tgt,
                 qubits=[comm_tgt],
@@ -209,7 +209,7 @@ def _emit_telegate_protocol(
     target_instructions.append(ResetInstruction(qubit=comm_tgt, qubits=[comm_tgt]))
     source_final_instructions.append(
         ConditionalInstruction(
-            condition=Condition(creg_base=c_end, creg_size=1, creg_value=1),
+            condition=make_condition(c_end, True),
             op=UInstruction(
                 qubit=data_ctrl,
                 qubits=[data_ctrl],
@@ -309,7 +309,7 @@ def _emit_teledata_protocol(
     instructions.append(ResetInstruction(qubit=comm_src, qubits=[comm_src]))
     dest_instructions.append(
         ConditionalInstruction(
-            condition=Condition(creg_base=c_comm, creg_size=1, creg_value=1),
+            condition=make_condition(c_comm, True),
             op=UInstruction(
                 qubit=comm_dst,
                 qubits=[comm_dst],
@@ -323,7 +323,7 @@ def _emit_teledata_protocol(
     )
     dest_instructions.append(
         ConditionalInstruction(
-            condition=Condition(creg_base=c_data, creg_size=1, creg_value=1),
+            condition=make_condition(c_data, True),
             op=UInstruction(
                 qubit=comm_dst,
                 qubits=[comm_dst],

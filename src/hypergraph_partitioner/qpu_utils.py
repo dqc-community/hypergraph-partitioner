@@ -79,8 +79,23 @@ def max_cbit_in_instruction(inst: InstructionType) -> int:
     if isinstance(inst, MeasureInstruction):
         return inst.cbit
     if isinstance(inst, ConditionalInstruction):
-        return max(inst.condition.creg_base, max_cbit_in_instruction(inst.op))
+        return max(_condition_cbit(inst.condition), max_cbit_in_instruction(inst.op))
     return -1
+
+
+def _condition_cbit(condition: Condition) -> int:
+    return getattr(condition, "cbit", getattr(condition, "creg_base", 0))
+
+
+def _condition_value(condition: Condition) -> bool:
+    return getattr(condition, "value", bool(getattr(condition, "creg_value", 0)))
+
+
+def make_condition(cbit: int, value: bool) -> Condition:
+    fields = getattr(Condition, "model_fields", {})
+    if "cbit" in fields:
+        return Condition(cbit=cbit, value=value)
+    return Condition(creg_base=cbit, creg_size=1, creg_value=int(value))
 
 
 def build_qpu_layouts(qubits_per_node: int, n_nodes: int) -> dict[int, QpuLayout]:
@@ -230,11 +245,12 @@ def remap_instruction(
     cbit_map = cbit_map or {}
     if isinstance(inst, ConditionalInstruction):
         mapped_op = remap_instruction(inst.op, qubit_map, cbit_map)
-        mapped_cbit = cbit_map.get(inst.condition.creg_base, inst.condition.creg_base)
+        condition_cbit = _condition_cbit(inst.condition)
+        mapped_cbit = cbit_map.get(condition_cbit, condition_cbit)
         return inst.model_copy(
             update={
                 "qubits": [qubit_map.get(q, q) for q in inst.qubits],
-                "condition": Condition(creg_base=mapped_cbit, creg_size=inst.condition.creg_size, creg_value=inst.condition.creg_value),
+                "condition": make_condition(mapped_cbit, _condition_value(inst.condition)),
                 "op": mapped_op,
             }
         )
