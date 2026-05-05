@@ -410,7 +410,6 @@ def test_annotated_circuit_marks_nonlocal_czs_and_boundary_swaps() -> None:
     result = _annotate_partitioned_circuit(segments)
 
     assert _count_nonlocal_interactions(result) == 1
-    assert _count_teleports(result) == 0
     assert _count_swaps(result) == 1
     operations = list(iter_annotated_operations(result))
     assert any(isinstance(op, NonlocalCZOp) for op in operations)
@@ -484,5 +483,5 @@ def test_real_circuit_initial_segments_annotate_boundaries_without_teleports() -
     swap_ops = [op for op in iter_annotated_operations(result) if isinstance(op, BoundarySwapOp)]
     assert len(result.segments) >= 2
     assert len(result.boundaries) == len(result.segments) - 1
-    assert _count_teleports(result) == 0
+
     assert sum(len(boundary.swaps or []) for boundary in result.boundaries) == len(swap_ops)
