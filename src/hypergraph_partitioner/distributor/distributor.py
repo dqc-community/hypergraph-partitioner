@@ -11,6 +11,7 @@ from bosonic_model import (
 
 from hypergraph_partitioner.bosonic_pipeline import iter_annotated_operations
 from hypergraph_partitioner.models.circuit_annotations import (
+    BoundarySwapOp,
     BoundaryTeleportOp,
     LocalOp,
     NonlocalCZOp,
@@ -49,6 +50,8 @@ def build_annotated_circuit(
             _distribute_local(op, state)
         elif isinstance(op, NonlocalCZOp):
             _distribute_telegate(op, state)
+        elif isinstance(op, BoundarySwapOp):
+            _distribute_remote_swap(op, state)
         elif isinstance(op, BoundaryTeleportOp):
             _distribute_teledata(op, state)
         else:
@@ -56,7 +59,11 @@ def build_annotated_circuit(
 
     finalize_circuit_registers(
         state.circuits,
-        total_qubits=n_nodes * 3 * qubits_per_node,
+        total_qubits=max(
+            (slot for layout in state.qpu_layouts.values() for slot in layout.data_slots + layout.comm_slots),
+            default=-1,
+        )
+        + 1,
         total_cbits=state.next_cbit,
     )
     distributed = DistributedCircuit(
@@ -150,3 +157,26 @@ def _distribute_teledata(op: BoundaryTeleportOp, state: DistributionState) -> No
     if source.qubit in source_layout.receiver_slots:
         free_receiver(source_layout, source.qubit)
     state.qubit_locations[qubit] = PhysicalLocation(node=int(op.to_node), qubit=dst_qubit)
+
+
+def _distribute_remote_swap(op: BoundarySwapOp, state: DistributionState) -> None:
+    left = state.qubit_locations[int(op.left_qubit)]
+    right = state.qubit_locations[int(op.right_qubit)]
+    if left.node == right.node:
+        raise ValueError("remote swap requires qubits on different nodes")
+
+    inst = GateInstruction(
+        name="remote_swap",
+        qubits=[left.qubit, right.qubit],
+        params=[],
+        opaque=True,
+    )
+    append_shared_instruction(
+        state.circuits,
+        state.instruction_index,
+        (left.node, right.node),
+        inst,
+        state,
+    )
+    state.qubit_locations[int(op.left_qubit)] = PhysicalLocation(node=right.node, qubit=right.qubit)
+    state.qubit_locations[int(op.right_qubit)] = PhysicalLocation(node=left.node, qubit=left.qubit)

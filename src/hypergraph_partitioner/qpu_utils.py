@@ -79,17 +79,42 @@ def max_cbit_in_instruction(inst: InstructionType) -> int:
     if isinstance(inst, MeasureInstruction):
         return inst.cbit
     if isinstance(inst, ConditionalInstruction):
-        return max(inst.condition.creg_base, max_cbit_in_instruction(inst.op))
+        return max(_condition_cbit(inst.condition), max_cbit_in_instruction(inst.op))
     return -1
+
+
+def _condition_cbit(condition: Condition) -> int:
+    return getattr(condition, "cbit", getattr(condition, "creg_base", 0))
+
+
+def _condition_value(condition: Condition) -> bool:
+    return getattr(condition, "value", bool(getattr(condition, "creg_value", 0)))
+
+
+def make_condition(cbit: int, value: bool) -> Condition:
+    fields = getattr(Condition, "model_fields", {})
+    if "cbit" in fields:
+        return Condition(cbit=cbit, value=value)
+    return Condition(creg_base=cbit, creg_size=1, creg_value=int(value))
+
+
+def _remap_condition(condition: Condition, cbit_map: dict[int, int]) -> Condition:
+    condition_cbit = _condition_cbit(condition)
+    mapped_cbit = cbit_map.get(condition_cbit, condition_cbit)
+    fields = getattr(Condition, "model_fields", {})
+    if "cbit" in fields:
+        return Condition(cbit=mapped_cbit, value=_condition_value(condition))
+    return condition.model_copy(update={"creg_base": mapped_cbit})
 
 
 def build_qpu_layouts(qubits_per_node: int, n_nodes: int) -> dict[int, QpuLayout]:
     qpu_layouts: dict[int, QpuLayout] = {}
+    physical_slots_per_node = qubits_per_node + 2
     for node in range(n_nodes):
-        base = node * 3 * qubits_per_node
+        base = node * physical_slots_per_node
         data_slots = list(range(base, base + qubits_per_node))
-        comm_slots = list(range(base + qubits_per_node, base + 2 * qubits_per_node))
-        receiver_slots = list(range(base + 2 * qubits_per_node, base + 3 * qubits_per_node))
+        comm_slots = list(range(base + qubits_per_node, base + qubits_per_node + 2))
+        receiver_slots: list[int] = []
         qpu_layouts[node] = QpuLayout(
             node=node,
             data_slots=data_slots,
@@ -104,14 +129,13 @@ def build_qpu_layouts(qubits_per_node: int, n_nodes: int) -> dict[int, QpuLayout
 def layouts_from_qubits_per_node(qubits_per_node: dict[int, list[int]]) -> dict[int, QpuLayout]:
     layouts: dict[int, QpuLayout] = {}
     for node, qubits in qubits_per_node.items():
-        if len(qubits) % 3 != 0:
+        if len(qubits) < 3:
             raise ValueError(
-                f"node {node} has {len(qubits)} qubits; expected a multiple of 3 for data/comm/receiver layout"
+                f"node {node} has {len(qubits)} qubits; expected at least one data qubit and two aux qubits"
             )
-        capacity = len(qubits) // 3
-        data_slots = list(qubits[:capacity])
-        comm_slots = list(qubits[capacity : 2 * capacity])
-        receiver_slots = list(qubits[2 * capacity :])
+        data_slots = list(qubits[:-2])
+        comm_slots = list(qubits[-2:])
+        receiver_slots: list[int] = []
         layouts[node] = QpuLayout(
             node=node,
             data_slots=data_slots,
@@ -230,11 +254,10 @@ def remap_instruction(
     cbit_map = cbit_map or {}
     if isinstance(inst, ConditionalInstruction):
         mapped_op = remap_instruction(inst.op, qubit_map, cbit_map)
-        mapped_cbit = cbit_map.get(inst.condition.creg_base, inst.condition.creg_base)
         return inst.model_copy(
             update={
                 "qubits": [qubit_map.get(q, q) for q in inst.qubits],
-                "condition": Condition(creg_base=mapped_cbit, creg_size=inst.condition.creg_size, creg_value=inst.condition.creg_value),
+                "condition": _remap_condition(inst.condition, cbit_map),
                 "op": mapped_op,
             }
         )

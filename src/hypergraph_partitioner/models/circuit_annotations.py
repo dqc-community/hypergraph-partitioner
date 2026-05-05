@@ -28,11 +28,20 @@ class TeleportBoundary:
 
 
 @dataclass(frozen=True)
+class SwapBoundary:
+    left_qubit: QubitId
+    right_qubit: QubitId
+    left_node: NodeId
+    right_node: NodeId
+
+
+@dataclass(frozen=True)
 class SegmentBoundary:
     boundary_id: BoundaryId
     left_segment_id: SegmentId
     right_segment_id: SegmentId
     teleports: list[TeleportBoundary]
+    swaps: list[SwapBoundary] | None = None
 
 
 @dataclass(frozen=True)
@@ -60,7 +69,16 @@ class BoundaryTeleportOp:
     to_node: NodeId
 
 
-AnnotatedOp: TypeAlias = LocalOp | NonlocalCZOp | BoundaryTeleportOp
+@dataclass(frozen=True)
+class BoundarySwapOp:
+    boundary_id: BoundaryId
+    left_qubit: QubitId
+    right_qubit: QubitId
+    left_node: NodeId
+    right_node: NodeId
+
+
+AnnotatedOp: TypeAlias = LocalOp | NonlocalCZOp | BoundaryTeleportOp | BoundarySwapOp
 
 
 @dataclass(frozen=True)

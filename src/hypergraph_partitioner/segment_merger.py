@@ -23,6 +23,21 @@ class QubitSpan:
     interaction_ids: tuple[int, ...]
 
 
+@dataclass(frozen=True)
+class BoundarySwap:
+    left_qubit: int
+    right_qubit: int
+    left_node: int
+    right_node: int
+
+
+@dataclass(frozen=True)
+class SwapProjection:
+    partition: Partition
+    swaps: tuple[BoundarySwap, ...]
+    residual_moves: tuple[int, ...]
+
+
 def merge_seams(
     to_hyp: ToHyp, to_part: ToPart, nodes: int, n_qubits: int, max_hedge_dist: int, segments: list[Segment]
 ) -> list[Segment]:
@@ -142,17 +157,24 @@ def _merge_min(to_hyp: ToHyp, to_part: ToPart, n_qubits: int, segments: list[Seg
     )
 
     cuts_left = _count_cuts(left_seg)
-    cuts_right = _count_cuts(right_seg)
-    teles = _count_qubit_moves(left_seg.partition, right_seg.partition, n_qubits)
+    projection = project_boundary_swaps(left_seg.partition, right_seg.partition, n_qubits)
+    projected_right_seg = Segment(
+        gates=right_seg.gates,
+        hypergraph=right_seg.hypergraph,
+        partition=projection.partition,
+        seam=right_seg.seam,
+        segment_range=right_seg.segment_range,
+    )
+    cuts_right = _count_cuts(projected_right_seg)
     cuts_merged = _count_cuts(merged_seg)
-    separate_cost = cuts_left + cuts_right + teles
+    separate_cost = cuts_left + cuts_right + 2 * len(projection.swaps)
 
     if separate_cost < cuts_merged:
         marked = [
             Segment(
                 gates=segment.gates,
                 hypergraph=segment.hypergraph,
-                partition=segment.partition,
+                partition=projection.partition if segment is right_seg else segment.partition,
                 seam=SeamStop(),
                 segment_range=segment.segment_range,
             )
@@ -421,6 +443,53 @@ def _upd_with(matching: Matching, seg: Segment) -> Segment:
 def _count_qubit_moves(part1: Partition, part2: Partition, n_qubits: int) -> int:
     """Count qubits that change block between two adjacent partitions."""
     return sum(1 for qubit in range(n_qubits) if qubit in part1 and qubit in part2 and part1[qubit] != part2[qubit])
+
+
+def project_boundary_swaps(part1: Partition, part2: Partition, n_qubits: int) -> SwapProjection:
+    """Approximate adjacent one-way moves with pairwise cross-node swaps.
+
+    Unpaired residual moves are intentionally ignored: those logical qubits stay
+    on their previous node, and the projected partition records that choice.
+    """
+    projected = dict(part1)
+    moves: dict[tuple[int, int], list[int]] = {}
+    for qubit in range(n_qubits):
+        if qubit not in part1 or qubit not in part2:
+            continue
+        source = part1[qubit]
+        target = part2[qubit]
+        if source != target:
+            moves.setdefault((source, target), []).append(qubit)
+
+    swaps: list[BoundarySwap] = []
+    consumed: set[int] = set()
+    for source, target in sorted(moves):
+        if source >= target:
+            continue
+        left_to_right = moves.get((source, target), [])
+        right_to_left = moves.get((target, source), [])
+        pairs = min(len(left_to_right), len(right_to_left))
+        for left_qubit, right_qubit in zip(left_to_right[:pairs], right_to_left[:pairs], strict=False):
+            projected[left_qubit] = target
+            projected[right_qubit] = source
+            consumed.add(left_qubit)
+            consumed.add(right_qubit)
+            swaps.append(
+                BoundarySwap(
+                    left_qubit=left_qubit,
+                    right_qubit=right_qubit,
+                    left_node=source,
+                    right_node=target,
+                )
+            )
+
+    residual = tuple(
+        qubit
+        for qubits in moves.values()
+        for qubit in qubits
+        if qubit not in consumed
+    )
+    return SwapProjection(partition=projected, swaps=tuple(swaps), residual_moves=residual)
 
 
 def _count_cuts(segment: Segment) -> int:

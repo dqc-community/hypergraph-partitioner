@@ -17,6 +17,7 @@ from hypergraph_partitioner.bosonic_pipeline import (
     _build_hypergraph_from_instructions,
     _count_interactions,
     _count_nonlocal_interactions,
+    _count_swaps,
     _count_teleports,
     _partition_to_partitioned_circuit,
     _preprocess,
@@ -27,7 +28,7 @@ from hypergraph_partitioner.bosonic_pipeline import (
 from hypergraph_partitioner.segment_merger import ignore_last_seam
 from hypergraph_partitioner.preprocessing.cz_commutation import push_cz_early
 from hypergraph_partitioner.models.circuit_annotations import (
-    BoundaryTeleportOp,
+    BoundarySwapOp,
     NonlocalCZOp,
     SegmentBoundary,
 )
@@ -177,7 +178,7 @@ def test_annotated_circuit_orders_boundary_ops_between_segments() -> None:
     u = UInstruction(qubit=0, qubits=[0], theta=0.0, phi=0.0, lam=0.0, params=[0.0, 0.0, 0.0])
     segments = [
         Segment(gates=[cz], partition={0: 0, 1: 1}, seam=SeamStop(), segment_range=(0, 0)),
-        Segment(gates=[u], partition={0: 1, 1: 1}, seam=SeamStop(), segment_range=(1, 1)),
+        Segment(gates=[u], partition={0: 1, 1: 0}, seam=SeamStop(), segment_range=(1, 1)),
     ]
 
     result = _annotate_partitioned_circuit(segments)
@@ -188,7 +189,7 @@ def test_annotated_circuit_orders_boundary_ops_between_segments() -> None:
     operations = list(iter_annotated_operations(result))
 
     first_boundary_idx = next(
-        i for i, op in enumerate(operations) if isinstance(op, BoundaryTeleportOp)
+        i for i, op in enumerate(operations) if isinstance(op, BoundarySwapOp)
     )
     first_nonlocal_idx = next(
         i for i, op in enumerate(operations) if isinstance(op, NonlocalCZOp)
@@ -398,21 +399,21 @@ def test_preprocess_step2_preserves_unitary_for_random_supported_circuits(
     assert preprocessed_op.equiv(step1_op)
 
 
-def test_annotated_circuit_marks_nonlocal_czs_and_boundary_teleports() -> None:
+def test_annotated_circuit_marks_nonlocal_czs_and_boundary_swaps() -> None:
     cz = CzInstruction(control=0, target=1, qubits=[0, 1])
     u = UInstruction(qubit=0, qubits=[0], theta=0.0, phi=0.0, lam=0.0, params=[0.0, 0.0, 0.0])
     segments = [
         Segment(gates=[cz], partition={0: 0, 1: 1}, seam=SeamStop(), segment_range=(0, 0)),
-        Segment(gates=[u], partition={0: 1, 1: 1}, seam=SeamStop(), segment_range=(1, 1)),
+        Segment(gates=[u], partition={0: 1, 1: 0}, seam=SeamStop(), segment_range=(1, 1)),
     ]
 
     result = _annotate_partitioned_circuit(segments)
 
     assert _count_nonlocal_interactions(result) == 1
-    assert _count_teleports(result) == 1
+    assert _count_swaps(result) == 1
     operations = list(iter_annotated_operations(result))
     assert any(isinstance(op, NonlocalCZOp) for op in operations)
-    assert any(isinstance(op, BoundaryTeleportOp) for op in operations)
+    assert any(isinstance(op, BoundarySwapOp) for op in operations)
 
 
 def test_partition_circuit_end_to_end_annotates_nonlocal_czs() -> None:
@@ -452,7 +453,7 @@ def test_partition_circuit_end_to_end_annotates_nonlocal_czs() -> None:
     assert all(op.control_node != op.target_node for op in nonlocal_ops)
 
 
-def test_real_circuit_initial_segments_annotate_multiple_segments_and_teleports() -> None:
+def test_real_circuit_initial_segments_annotate_boundaries_without_teleports() -> None:
     circuit = Translator().from_qasm(
         """
         OPENQASM 2.0;
@@ -479,10 +480,8 @@ def test_real_circuit_initial_segments_annotate_multiple_segments_and_teleports(
     )
     result = _annotate_partitioned_circuit(ignore_last_seam(initial))
 
-    teleport_ops = [
-        op for op in iter_annotated_operations(result) if isinstance(op, BoundaryTeleportOp)
-    ]
+    swap_ops = [op for op in iter_annotated_operations(result) if isinstance(op, BoundarySwapOp)]
     assert len(result.segments) >= 2
     assert len(result.boundaries) == len(result.segments) - 1
-    assert len(teleport_ops) >= 1
-    assert sum(len(boundary.teleports) for boundary in result.boundaries) == len(teleport_ops)
+
+    assert sum(len(boundary.swaps or []) for boundary in result.boundaries) == len(swap_ops)

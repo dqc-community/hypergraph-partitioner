@@ -18,6 +18,7 @@ from hypergraph_partitioner.models.circuit_annotations import (
     AnnotatedOp,
     NodeId,
     BoundaryId,
+    BoundarySwapOp,
     BoundaryTeleportOp,
     LocalOp,
     NonlocalCZOp,
@@ -25,12 +26,12 @@ from hypergraph_partitioner.models.circuit_annotations import (
     PartitionedSegment,
     SegmentBoundary,
     SegmentId,
-    TeleportBoundary,
+    SwapBoundary,
     QubitId,
 )
 from hypergraph_partitioner.models.hypergraph import Hypergraph, InteractionVertex, QubitVertex
 from hypergraph_partitioner.models.segment import SeamCompute, Segment
-from hypergraph_partitioner.segment_merger import ignore_last_seam, merge_seams
+from hypergraph_partitioner.segment_merger import ignore_last_seam, merge_seams, project_boundary_swaps
 from hypergraph_partitioner.kahypar_partitioner import partition_hypergraph
 from hypergraph_partitioner.preprocessing.normalization import normalize_to_one_qubit_and_cz
 
@@ -144,7 +145,7 @@ def _initial_segments(
 
 def _annotate_partitioned_circuit(segments: list[Segment]) -> PartitionedCircuit:
     """Add the appropriate telegate and teledata annotations to the partitioned segments and boundaries."""
-    public_segments = [_to_partitioned_segment(seg, idx) for idx, seg in enumerate(segments)]
+    public_segments = _project_segments_to_swaps(segments)
     boundaries: list[SegmentBoundary] = []
 
     for idx, seg in enumerate(public_segments):
@@ -235,6 +236,10 @@ def _count_teleports(circuit: PartitionedCircuit) -> int:
     return sum(len(boundary.teleports) for boundary in circuit.boundaries)
 
 
+def _count_swaps(circuit: PartitionedCircuit) -> int:
+    return sum(len(boundary.swaps or []) for boundary in circuit.boundaries)
+
+
 def _to_partitioned_segment(seg: Segment, idx: int) -> PartitionedSegment:
     return PartitionedSegment(
         segment_id=SegmentId(idx),
@@ -243,23 +248,47 @@ def _to_partitioned_segment(seg: Segment, idx: int) -> PartitionedSegment:
     )
 
 
+def _project_segments_to_swaps(segments: list[Segment]) -> list[PartitionedSegment]:
+    if not segments:
+        return []
+
+    projected: list[PartitionedSegment] = [_to_partitioned_segment(segments[0], 0)]
+    previous = dict(segments[0].partition)
+    n_qubits = _partition_width(previous)
+    for idx, seg in enumerate(segments[1:], 1):
+        projection = project_boundary_swaps(previous, seg.partition, n_qubits)
+        projected.append(
+            PartitionedSegment(
+                segment_id=SegmentId(idx),
+                instructions=seg.gates,
+                partition={QubitId(q): NodeId(node) for q, node in projection.partition.items()},
+            )
+        )
+        previous = projection.partition
+    return projected
+
+
 def _build_boundary(
     left: PartitionedSegment, right: PartitionedSegment, boundary_idx: int
 ) -> SegmentBoundary:
-    teleports = [
-        TeleportBoundary(
-            qubit=qubit,
-            from_node=left.partition[qubit],
-            to_node=right.partition[qubit],
+    int_left = {int(q): int(node) for q, node in left.partition.items()}
+    int_right = {int(q): int(node) for q, node in right.partition.items()}
+    projection = project_boundary_swaps(int_left, int_right, _partition_width(int_left))
+    swaps = [
+        SwapBoundary(
+            left_qubit=QubitId(swap.left_qubit),
+            right_qubit=QubitId(swap.right_qubit),
+            left_node=NodeId(swap.left_node),
+            right_node=NodeId(swap.right_node),
         )
-        for qubit in left.partition
-        if qubit in right.partition and left.partition[qubit] != right.partition[qubit]
+        for swap in projection.swaps
     ]
     return SegmentBoundary(
         boundary_id=BoundaryId(boundary_idx),
         left_segment_id=left.segment_id,
         right_segment_id=right.segment_id,
-        teleports=teleports,
+        teleports=[],
+        swaps=swaps,
     )
 
 
@@ -275,6 +304,14 @@ def iter_annotated_operations(circuit: PartitionedCircuit) -> Iterator[Annotated
             expected_right = circuit.segments[idx + 1].segment_id
             if boundary.left_segment_id != expected_left or boundary.right_segment_id != expected_right:
                 raise ValueError("partitioned circuit boundaries must align with adjacent segment ordering")
+            for swap in boundary.swaps or []:
+                yield BoundarySwapOp(
+                    boundary_id=boundary.boundary_id,
+                    left_qubit=swap.left_qubit,
+                    right_qubit=swap.right_qubit,
+                    left_node=swap.left_node,
+                    right_node=swap.right_node,
+                )
             for teleport in boundary.teleports:
                 yield BoundaryTeleportOp(
                     boundary_id=boundary.boundary_id,
@@ -307,3 +344,7 @@ def _annotate_segment_ops(seg: PartitionedSegment) -> Iterator[AnnotatedOp]:
                 continue
 
         yield LocalOp(segment_id=seg.segment_id, instruction=inst, nodes=nodes)
+
+
+def _partition_width(partition: dict[int, int]) -> int:
+    return max(partition, default=-1) + 1

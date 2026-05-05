@@ -12,6 +12,7 @@ from hypergraph_partitioner import (
 )
 from hypergraph_partitioner.bosonic_pipeline import (
     _count_nonlocal_interactions,
+    _count_swaps,
     _count_teleports,
     _partition_to_partitioned_circuit,
 )
@@ -165,7 +166,8 @@ def test_lowered_statevector_matches_original_for_teleporting_circuit(
 
     assert len(partitioned.segments) == 2
     assert _count_nonlocal_interactions(partitioned) == 2
-    assert _count_teleports(partitioned) == 2
+    assert _count_teleports(partitioned) == 0
+    assert _count_swaps(partitioned) == 1
 
     lowered_monolithic = _lowered_monolithic(partitioned, qubits_per_node=2)
     names = _instruction_names(lowered_monolithic)
@@ -194,7 +196,8 @@ def test_lowered_statevector_matches_original_for_small_multi_segment_regression
 
     assert len(partitioned.segments) == 2
     assert _count_nonlocal_interactions(partitioned) == 3
-    assert _count_teleports(partitioned) == 2
+    assert _count_teleports(partitioned) == 0
+    assert _count_swaps(partitioned) == 1
 
     lowered_monolithic = _lowered_monolithic(partitioned, qubits_per_node=2)
     names = _instruction_names(lowered_monolithic)

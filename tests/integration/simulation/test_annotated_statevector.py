@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import pytest
 from bosonic_converters import CircuitConverters
-from bosonic_model import Condition, ConditionalInstruction, Circuit, GateInstruction, Register
+from bosonic_model import ConditionalInstruction, Circuit, GateInstruction, Register
 from bosonic_model.instructions import CzInstruction, InstructionType
 from qiskit import QuantumCircuit
 
 from hypergraph_partitioner import (
     build_annotated_circuit,
 )
+from hypergraph_partitioner.qpu_utils import make_condition
 from hypergraph_partitioner.bosonic_pipeline import (
     _count_nonlocal_interactions,
+    _count_swaps,
     _count_teleports,
     _partition_to_partitioned_circuit,
 )
@@ -41,7 +43,7 @@ def _rewrite_symbolic_instruction(inst: InstructionType) -> InstructionType:
 
     if isinstance(inst, GateInstruction) and inst.name == "remote_cz":
         return GateInstruction(name="cz", qubits=list(inst.qubits), params=[], opaque=True)
-    if isinstance(inst, GateInstruction) and inst.name == "teleport":
+    if isinstance(inst, GateInstruction) and inst.name in {"teleport", "remote_swap"}:
         return GateInstruction(name="swap", qubits=list(inst.qubits), params=[], opaque=True)
     return inst
 
@@ -92,7 +94,7 @@ def test_annotated_statevector_matches_original_for_conditional_remote_cz() -> N
         instructions=[
             *with_preparations(Circuit(), [(0, "+"), (1, "+")]).instructions,
             ConditionalInstruction(
-                condition=Condition(creg_base=0, creg_size=1, creg_value=1),
+                condition=make_condition(0, True),
                 op=CzInstruction(control=0, target=1, qubits=[0, 1]),
             ),
         ],
@@ -128,14 +130,15 @@ def test_annotated_statevector_matches_original_for_multi_segment_regression_cir
 
     assert len(partitioned.segments) == 5
     assert _count_nonlocal_interactions(partitioned) == 14
-    assert _count_teleports(partitioned) == 8
+    assert _count_teleports(partitioned) == 0
+    assert _count_swaps(partitioned) >= 1
 
     distributed = build_annotated_circuit(partitioned, qubits_per_node=4)
     names = [
         str(getattr(inst, "name", getattr(inst, "kind", "")))
         for inst in distributed.as_monolithic_circuit().instructions
     ]
-    assert "teleport" in names
+    assert "remote_swap" in names
     assert "remote_cz" in names
 
     annotated = simulate_statevector(
@@ -196,14 +199,15 @@ def test_annotated_statevector_matches_original_for_teleporting_circuit(
 
     assert len(partitioned.segments) == 2
     assert _count_nonlocal_interactions(partitioned) == 2
-    assert _count_teleports(partitioned) == 2
+    assert _count_teleports(partitioned) == 0
+    assert _count_swaps(partitioned) == 1
 
     distributed = build_annotated_circuit(partitioned, qubits_per_node=2)
     names = [
         str(getattr(inst, "name", getattr(inst, "kind", "")))
         for inst in distributed.as_monolithic_circuit().instructions
     ]
-    assert "teleport" in names
+    assert "remote_swap" in names
     assert "remote_cz" in names
 
     annotated = simulate_statevector(CircuitConverters.to_qiskit(_rewrite_symbolic_for_qiskit(distributed.as_monolithic_circuit())))

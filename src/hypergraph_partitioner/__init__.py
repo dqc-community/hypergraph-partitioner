@@ -9,12 +9,14 @@ from hypergraph_partitioner.circuit_lowering import (
 )
 from hypergraph_partitioner.models.circuit_annotations import (
     AnnotatedOp,
+    BoundarySwapOp,
     BoundaryTeleportOp,
     LocalOp,
     NonlocalCZOp,
     PartitionedCircuit,
     PartitionedSegment,
     SegmentBoundary,
+    SwapBoundary,
     TeleportBoundary,
 )
 
@@ -26,8 +28,10 @@ __all__ = [
     "PartitionedSegment",
     "SegmentBoundary",
     "TeleportBoundary",
+    "SwapBoundary",
     "AnnotatedOp",
     "LocalOp",
     "NonlocalCZOp",
     "BoundaryTeleportOp",
+    "BoundarySwapOp",
 ]

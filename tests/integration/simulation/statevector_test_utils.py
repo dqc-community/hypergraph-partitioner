@@ -75,6 +75,9 @@ def to_aer_compatible_qiskit(circuit: QuantumCircuit) -> QuantumCircuit:
         if op.name in {"remote_link_psi_minus", "remote_link_psi_plus"}:
             rewritten.append(UnitaryGate(op.to_matrix(), label=op.name), inst.qubits, inst.clbits)
             continue
+        if op.name == "remote_swap":
+            rewritten.swap(inst.qubits[0], inst.qubits[1])
+            continue
         rewritten.append(op, inst.qubits, inst.clbits)
     return rewritten
 
@@ -93,7 +96,7 @@ def initial_qubit_locations(
         qubits = sorted(
             int(qubit) for qubit, owner in first_segment.partition.items() if int(owner) == node
         )
-        base = node * 3 * qubits_per_node
+        base = node * (qubits_per_node + 2)
         data_slots = list(range(base, base + qubits_per_node))
         for slot, qubit in zip(data_slots, qubits, strict=False):
             locations[qubit] = slot
@@ -105,53 +108,43 @@ def final_qubit_locations(
 ) -> dict[int, int]:
     n_blocks = num_blocks(partitioned)
     locations = initial_qubit_locations(partitioned, qubits_per_node)
-    receiver_slots = {
-        block: set(
-            range(
-                block * 3 * qubits_per_node + 2 * qubits_per_node,
-                (block + 1) * 3 * qubits_per_node,
-            )
-        )
-        for block in range(n_blocks)
-    }
-    free_receivers = {
-        block: set(receiver_slots[block])
-        for block in range(n_blocks)
-    }
     for boundary in partitioned.boundaries:
+        for swap in boundary.swaps or []:
+            left = int(swap.left_qubit)
+            right = int(swap.right_qubit)
+            locations[left], locations[right] = locations[right], locations[left]
         for teleport in boundary.teleports:
-            qubit = int(teleport.qubit)
-            source = locations[qubit]
-            source_node = int(teleport.from_node)
-            destination_node = int(teleport.to_node)
-            destination = min(free_receivers[destination_node])
-            free_receivers[destination_node].remove(destination)
-            if source in receiver_slots[source_node]:
-                free_receivers[source_node].add(source)
-            locations[qubit] = destination
+            # Legacy teleport expectations are intentionally not modeled by the
+            # compact SWAP layout; HG-generated circuits no longer emit these.
+            locations[int(teleport.qubit)] = locations[int(teleport.qubit)]
     return locations
 
 
 def embedded_original_to_qiskit(
     circuit: Circuit, partitioned: PartitionedCircuit, qubits_per_node: int
 ) -> QuantumCircuit:
-    initial_locations_map = initial_qubit_locations(partitioned, qubits_per_node)
-    final_locations_map = final_qubit_locations(partitioned, qubits_per_node)
-    total_qubits = num_blocks(partitioned) * 3 * qubits_per_node
+    locations = initial_qubit_locations(partitioned, qubits_per_node)
+    total_qubits = num_blocks(partitioned) * (qubits_per_node + 2)
 
-    logical = CircuitConverters.to_qiskit(circuit)
     embedded = QuantumCircuit(total_qubits)
-    embedded.compose(
-        logical,
-        qubits=[initial_locations_map[qubit] for qubit in range(circuit.qubits())],
-        inplace=True,
-    )
-
-    for qubit in sorted(initial_locations_map):
-        source = initial_locations_map[qubit]
-        destination = final_locations_map[qubit]
-        if source != destination:
-            embedded.swap(source, destination)
+    for idx, segment in enumerate(partitioned.segments):
+        logical_segment = Circuit(
+            qregs=circuit.qregs,
+            cregs=circuit.cregs,
+            instructions=segment.instructions,
+        )
+        embedded.compose(
+            CircuitConverters.to_qiskit(logical_segment),
+            qubits=[locations[qubit] for qubit in range(circuit.qubits())],
+            inplace=True,
+        )
+        if idx < len(partitioned.boundaries):
+            boundary = partitioned.boundaries[idx]
+            for swap in boundary.swaps or []:
+                left = int(swap.left_qubit)
+                right = int(swap.right_qubit)
+                embedded.swap(locations[left], locations[right])
+                locations[left], locations[right] = locations[right], locations[left]
 
     return embedded
 
