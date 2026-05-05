@@ -98,6 +98,15 @@ def make_condition(cbit: int, value: bool) -> Condition:
     return Condition(creg_base=cbit, creg_size=1, creg_value=int(value))
 
 
+def _remap_condition(condition: Condition, cbit_map: dict[int, int]) -> Condition:
+    condition_cbit = _condition_cbit(condition)
+    mapped_cbit = cbit_map.get(condition_cbit, condition_cbit)
+    fields = getattr(Condition, "model_fields", {})
+    if "cbit" in fields:
+        return Condition(cbit=mapped_cbit, value=_condition_value(condition))
+    return condition.model_copy(update={"creg_base": mapped_cbit})
+
+
 def build_qpu_layouts(qubits_per_node: int, n_nodes: int) -> dict[int, QpuLayout]:
     qpu_layouts: dict[int, QpuLayout] = {}
     physical_slots_per_node = qubits_per_node + 2
@@ -245,12 +254,10 @@ def remap_instruction(
     cbit_map = cbit_map or {}
     if isinstance(inst, ConditionalInstruction):
         mapped_op = remap_instruction(inst.op, qubit_map, cbit_map)
-        condition_cbit = _condition_cbit(inst.condition)
-        mapped_cbit = cbit_map.get(condition_cbit, condition_cbit)
         return inst.model_copy(
             update={
                 "qubits": [qubit_map.get(q, q) for q in inst.qubits],
-                "condition": make_condition(mapped_cbit, _condition_value(inst.condition)),
+                "condition": _remap_condition(inst.condition, cbit_map),
                 "op": mapped_op,
             }
         )
