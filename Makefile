@@ -22,8 +22,10 @@ run:
 		INIT_SEG_SIZE=$(INIT_SEG_SIZE) uv run python "$$f"; \
 	done
 
+PYTEST_ARGS ?=
+
 test:
-	uv run --extra dev python -m pytest -q
+	uv run --extra dev python -m pytest -q $(PYTEST_ARGS)
 
 debug-local-deps:
 	uv pip install --no-deps \
