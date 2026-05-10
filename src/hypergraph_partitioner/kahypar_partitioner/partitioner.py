@@ -26,7 +26,6 @@ def partition_hypergraph(hyp: Hypergraph, n_qubits: int, nodes: int, config_path
     ctx.loadINIconfiguration(config_path)
     ctx.setK(nodes)
     ctx.setEpsilon(float(config.EPSILON))
-    ctx.setSeed(0)
     ctx.suppressOutput(True)
 
     hg = kahypar.Hypergraph(n_qubits, n_nets, indices, nets, nodes, [], weights)
