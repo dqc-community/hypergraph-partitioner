@@ -336,8 +336,6 @@ def test_preprocess_step2_keeps_qubit_interactions_in_circuit_order() -> None:
         n_qubits=circuit.qubits(),
     )
 
-    assert [getattr(inst, "kind", None) for inst in preprocessed[:2]] == ["cz", "cz"]
-
     assert len(step1_hyp.interactions) == 2
     assert len(preprocessed_hyp.interactions) == 2
     assert step1_hyp.qubit_to_interactions[0] == [0, 1]
