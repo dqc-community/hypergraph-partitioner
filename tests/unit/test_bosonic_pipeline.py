@@ -96,7 +96,6 @@ def _random_supported_qiskit_circuit(
     return qc
 
 
-@pytest.mark.integration
 def test_partition_circuit_runs_on_small_qasm() -> None:
     circuit = Translator().from_qasm(
         """
@@ -123,7 +122,6 @@ def test_partition_circuit_runs_on_small_qasm() -> None:
     assert _count_interactions(circuit.instructions) >= 2
 
 
-@pytest.mark.integration
 def test_partition_circuit_can_return_lowered_distributed_circuit() -> None:
     circuit = Translator().from_qasm(
         """
@@ -153,7 +151,6 @@ def test_partition_circuit_can_return_lowered_distributed_circuit() -> None:
     assert "teleport" not in names
 
 
-@pytest.mark.integration
 def test_partition_circuit_rejects_unknown_output_mode() -> None:
     circuit = Translator().from_qasm(
         """
@@ -200,7 +197,6 @@ def test_annotated_circuit_orders_boundary_ops_between_segments() -> None:
     assert first_nonlocal_idx < first_boundary_idx
 
 
-@pytest.mark.integration
 def test_initial_segments_splits_by_interaction_count() -> None:
     circuit = Translator().from_qasm(
         """
@@ -417,7 +413,6 @@ def test_annotated_circuit_marks_nonlocal_czs_and_boundary_teleports() -> None:
     assert any(isinstance(op, BoundaryTeleportOp) for op in operations)
 
 
-@pytest.mark.integration
 def test_partition_circuit_end_to_end_annotates_nonlocal_czs() -> None:
     circuit = Translator().from_qasm(
         """
@@ -455,7 +450,6 @@ def test_partition_circuit_end_to_end_annotates_nonlocal_czs() -> None:
     assert all(op.control_node != op.target_node for op in nonlocal_ops)
 
 
-@pytest.mark.integration
 def test_real_circuit_initial_segments_annotate_multiple_segments_and_teleports() -> None:
     circuit = Translator().from_qasm(
         """

@@ -5,14 +5,16 @@ from __future__ import annotations
 from hypergraph_partitioner import config
 from hypergraph_partitioner.models.hypergraph import Hypergraph, Partition
 
+try:
+    import kahypar
+except ImportError:
+    raise ImportError(
+        "kahypar is not available on Windows. Use WSL or switch to a different distributor."
+    )
+
+
 def partition_hypergraph(hyp: Hypergraph, n_qubits: int, nodes: int, config_path: str) -> Partition:
     """Partition hypergraph."""
-    try:
-        import kahypar
-    except ImportError:
-        raise ImportError(
-            "kahypar is not available on Windows. Use WSL or switch to a different distributor."
-        )
 
     indices, nets, weights = _hypergraph_to_kahypar(hyp, n_qubits)
     n_nets = len(indices) - 1

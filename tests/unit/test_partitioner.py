@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from bosonic_model.qasm import Translator
 
 from hypergraph_partitioner.bosonic_pipeline import _build_hypergraph_from_instructions
+from hypergraph_partitioner.config import KAHYPAR_CONFIG
+from hypergraph_partitioner.kahypar_partitioner import partition_hypergraph
 from hypergraph_partitioner.segment_merger import (
     QubitSpan,
     _count_cuts,
@@ -61,6 +63,20 @@ def _seg_with_hyp(
 ) -> Segment:
     return Segment(gates=[], hypergraph=hyp, partition=partition, seam=seam, segment_range=(0, 0))
 
+
+def test_partition_hypergraph_empty_hypergraph_returns_balanced_assignment() -> None:
+    part = partition_hypergraph(Hypergraph(qubits={}, interactions={}), n_qubits=3, nodes=2, config_path=KAHYPAR_CONFIG)
+
+    assert part == {0: 0, 1: 1, 2: 0}
+
+
+def test_partition_hypergraph_returns_assignment_for_nonempty_hypergraph() -> None:
+    hyp = _hyp((0, 0, (0, 1)))
+
+    part = partition_hypergraph(hyp, n_qubits=2, nodes=2, config_path=KAHYPAR_CONFIG)
+
+    assert part.keys() == {0, 1}
+    assert sorted(part.values()) == [0, 1]
 
 
 def test_ignore_last_seam_marks_last_segment_stop() -> None:
