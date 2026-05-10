@@ -31,15 +31,15 @@ wheels = [
 
 [[package]]
 name = "bosonic-model"
-version = "0.1.1"
+version = "0.1.2"
 source = { registry = "https://test.pypi.org/simple" }
 dependencies = [
     { name = "lark" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/1d/21/bef0ebf8bca7562d8dfeb1465767e7771946d67809acb7d073377abe013a/bosonic_model-0.1.1.tar.gz", hash = "sha256:93ffba92fdaf1460f1438603e4b60c5dfbe497aa4eb9a77c5fb927ad7e0bc273", size = 10168, upload-time = "2026-04-08T22:26:21.353Z" }
+sdist = { url = "https://test-files.pythonhosted.org/packages/ef/ec/ee5d94190655efe816e8b09e046301139e71d45b7f1290bdd4b4bc5dd11d/bosonic_model-0.1.2.tar.gz", hash = "sha256:fecea15e99d93cfaaa614a3bda5e09318a103e7c031f0fcd917a6c4c9fdb6f88", size = 10164, upload-time = "2026-05-05T04:14:12.087Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/66/06/6e5a3cc5ef786a9ff059c15aa1b32316f4c3da034be8d9c258ab03bc0f72/bosonic_model-0.1.1-py3-none-any.whl", hash = "sha256:e3da53e5f46da82510a28dd6a1c7dcfc71c43039e9bc666dfaa362eca998b622", size = 12489, upload-time = "2026-04-08T22:26:19.644Z" },
+    { url = "https://test-files.pythonhosted.org/packages/0b/ca/ac67a020f9dae54fc55673f2271df542635b1328ec308d565e2474e6d957/bosonic_model-0.1.2-py3-none-any.whl", hash = "sha256:294c8c0aadcaf3eeec25b063d0483e2973367f30c92b085b4248a05979e7911c", size = 12486, upload-time = "2026-05-05T04:14:10.789Z" },
 ]
 
 [[package]]
