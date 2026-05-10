@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
 from bosonic_model.qasm import Translator
+
+pytestmark = pytest.mark.integration
 
 from hypergraph_partitioner.bosonic_pipeline import (
     _count_interactions,
